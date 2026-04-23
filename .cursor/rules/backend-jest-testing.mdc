@@ -1,0 +1,37 @@
+---
+description: Backend Jest、workspace 依赖与 Prisma mock 约定，避免路径与断言类复发问题
+globs:
+  - packages/backend/**/*
+  - packages/shared/**/*
+alwaysApply: false
+---
+
+# Backend 测试与 Jest 约定
+
+## Monorepo 与 `@oa-mvp/shared`
+
+- `packages/backend` 必须在 `package.json` 的 `dependencies` 中声明 `"@oa-mvp/shared": "workspace:*"`，否则 pnpm 链接与 TypeScript/Jest 解析可能失败。
+- 跑 `pnpm --filter @oa-mvp/backend test` 或 `typecheck` 前，应先执行 `pnpm --filter @oa-mvp/shared build`，保证 `packages/shared/dist/` 存在（CI FT job 已按此顺序）。
+
+## `packages/backend/jest.config.ts`
+
+- `rootDir` 为 `./src` 时，`moduleNameMapper` 中 `@oa-mvp/shared` 必须映射到 **`../../shared/dist/index.js`**（从 `packages/backend` 上到 `packages/shared`），禁止使用 `../../packages/shared/...`，否则会解析成错误的 `packages/packages/...` 路径。
+- 保留相对路径 `.js` 导入的回退映射：`^(\\.{1,2}/.*)\\.js$` → `$1`，否则 `import './foo.js'` 在 Jest 中会按字面找 `.js` 文件而忽略 `.ts`。
+- 保留显式 `transform` + `ts-jest`（含 `experimentalDecorators` 等与 Nest 一致），不要仅依赖 `preset: 'ts-jest'` 作为唯一配置。
+
+## Mock Prisma / 服务调用
+
+- `prisma.*.upsert({ where, create, update })`、`findMany({ where, ... })` 等在 Jest 里均为**单对象实参**：使用 `mock.calls[0][0]` 或 `const [args] = mock.calls[0]`，**不要**写成 `const [where, create, update] = calls[0]` 或 `const [, second] = calls[0]`（第二个位置参数不存在）。
+
+## Nest 异常断言
+
+- `throw new NotFoundException()` 无 message 时，异常 message 常为默认的 `"Not Found"`，不要与 `NotFoundException('Task not found')` 混用；测试应匹配实现或 `instanceof NotFoundException`。
+
+## `@oa-mvp/shared` 联合类型与业务代码
+
+- `setDependency` 失败时仅在 `code === 'CYCLE'` 时传递 `cyclePath`；测试 mock 的 `code` 须与 `SetDependencyResult` 一致（例如用 `CYCLE` 而非虚构的 `CYCLE_DETECTED`）。
+- `propagateFinishChange` 依赖 `buildGraph` 的语义（任务 → 其 `dependencyTaskId` 指向的前驱）；mock `buildGraph` 的 `Map` 须表示**依赖边方向**，再经服务内反向建 `downstream`。
+
+## 参考文档
+
+- 人类可读的故障与修复表见仓库内 `docs/BACKEND_TESTING.md`。
