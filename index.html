@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OA 项目管理 MVP</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- 顶部栏 -->
+  <header id="app-header">
+    <span class="app-title">OA 项目管理 MVP</span>
+    <div class="header-actions">
+      <button id="btn-export" title="导出 JSON 备份">导出</button>
+      <button id="btn-import" title="从 JSON 恢复">导入</button>
+      <input type="file" id="file-import" accept=".json" style="display:none" />
+    </div>
+  </header>
+
+  <!-- 三栏主体 -->
+  <div id="app-body">
+
+    <!-- 左栏：项目/迭代树 -->
+    <aside id="sidebar">
+      <div id="role-switcher"></div>
+      <div id="project-tree"></div>
+    </aside>
+
+    <!-- 中栏：WBS 表格 -->
+    <main id="main-content">
+      <div id="schedule-header"></div>
+      <div id="approval-panel"></div>
+      <div id="wbs-table-wrapper">
+        <table id="wbs-table">
+          <thead id="wbs-thead"></thead>
+          <tbody id="wbs-tbody"></tbody>
+        </table>
+      </div>
+    </main>
+
+    <!-- 右栏：活动日志 -->
+    <aside id="activity-log-panel">
+      <h3>活动日志</h3>
+      <ul id="activity-log-list"></ul>
+    </aside>
+
+  </div>
+
+  <!-- Toast 通知 -->
+  <div id="toast-container"></div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

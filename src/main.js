@@ -1,0 +1,338 @@
+// src/main.js
+import { getState, setState, subscribe, exportState, importState } from './store.js';
+import { buildSeed } from './seed.js';
+import { downloadJSON, pickJSONFile } from './io/importExport.js';
+import { renderRoleSwitcher } from './components/roleSwitcher.js';
+import { renderProjectTree } from './components/projectTree.js';
+import { renderWBSTable, initTableKeyboard } from './components/wbsTable.js';
+import { renderActivityLog } from './components/activityLog.js';
+import { scheduleAutoSave } from './hooks/autoSave.js';
+
+// ─── Bootstrap ─────────────────────────────────────────────────────────────
+
+function init() {
+  const state = getState();
+  if (!state.users.length) {
+    // First run: load seed data
+    setState(buildSeed());
+  }
+  render();
+  setupGlobalEvents();
+  subscribe(render);
+}
+
+// ─── Full re-render ─────────────────────────────────────────────────────────
+
+function render() {
+  const state = getState();
+
+  // Header
+  renderRoleSwitcher(document.getElementById('role-switcher'));
+
+  // Sidebar
+  renderProjectTree(document.getElementById('project-tree'));
+
+  // Main area
+  if (state.viewMode === 'MASTER') {
+    renderMasterView();
+  } else {
+    renderGroupView();
+  }
+
+  // Activity log
+  renderActivityLog(document.getElementById('activity-log-list'));
+}
+
+// ─── Group view (WBS table + approval panel) ────────────────────────────────
+
+function renderGroupView() {
+  const state = getState();
+  const { activeIterationId, activeGroupId, schedules, tasks } = state;
+
+  const sched = schedules.find(
+    s => s.iterationId === activeIterationId && s.groupId === activeGroupId
+  );
+  const schedTasks = tasks.filter(t => t.scheduleId === sched?.id);
+
+  // Schedule header
+  const schedEl = document.getElementById('schedule-header');
+  const iter = state.iterations.find(i => i.id === activeIterationId);
+  const group = state.groups.find(g => g.id === activeGroupId);
+  schedEl.innerHTML = `
+    <h2>${group?.name ?? ''} — ${iter?.name ?? ''}</h2>
+    <span class="status-badge status-${sched?.status ?? ''}">${statusLabel(sched?.status)}</span>
+    <span style="margin-left:auto;font-size:12px;color:#6b7280">
+      ${schedTasks.length} 个任务
+    </span>
+  `;
+
+  // Approval panel (GL sees submit/withdraw; PM sees approve/reject/reschedule)
+  renderApprovalPanel(sched);
+
+  // WBS table
+  document.getElementById('approval-panel').className =
+    sched?.status === 'REVIEWING' ? 'visible' : '';
+  renderWBSTable(sched, schedTasks);
+}
+
+// ─── Approval panel ─────────────────────────────────────────────────────────
+
+function renderApprovalPanel(schedule) {
+  const panel = document.getElementById('approval-panel');
+  const state = getState();
+  const user = state.users.find(u => u.id === state.currentUserId);
+  const role = user?.role;
+
+  if (!schedule) { panel.className = ''; return; }
+
+  panel.className = 'visible';
+
+  if (role === 'GROUP_LEADER') {
+    const canWithdraw = schedule.status === 'REVIEWING';
+    const canSubmit = ['PENDING', 'REJECTED', 'APPROVED'].includes(schedule.status);
+    panel.innerHTML = `
+      ${canSubmit ? `<button id="btn-submit" class="primary">提交</button>` : ''}
+      ${canWithdraw ? `<button id="btn-withdraw" class="">撤回</button>` : ''}
+    `;
+    panel.querySelector('#btn-submit')?.addEventListener('click', () => handleSubmit());
+    panel.querySelector('#btn-withdraw')?.addEventListener('click', () => handleWithdraw());
+  } else if (role === 'PROJECT_MANAGER') {
+    const canApprove = schedule.status === 'REVIEWING';
+    const canResched = schedule.status === 'APPROVED';
+    panel.innerHTML = `
+      ${canApprove ? `
+        <textarea id="reject-reason" placeholder="拒绝理由（1-200字）" maxlength="200" rows="2"></textarea>
+        <span class="reason-hint"><span id="reason-len">0</span>/200</span>
+        <button id="btn-approve" class="primary">同意</button>
+        <button id="btn-reject" class="danger">拒绝</button>
+      ` : ''}
+      ${canResched ? `<button id="btn-resched" class="">重新排期</button>` : ''}
+    `;
+    const ta = panel.querySelector('#reject-reason');
+    ta?.addEventListener('input', () => {
+      panel.querySelector('#reason-len').textContent = ta.value.length;
+    });
+    panel.querySelector('#btn-approve')?.addEventListener('click', () => handleApprove());
+    panel.querySelector('#btn-reject')?.addEventListener('click', () => handleReject(ta?.value ?? ''));
+    panel.querySelector('#btn-resched')?.addEventListener('click', () => handleResched());
+  }
+}
+
+// ─── Master view ─────────────────────────────────────────────────────────────
+
+function renderMasterView() {
+  const state = getState();
+  const iter = state.iterations.find(i => i.id === state.activeIterationId);
+  const scheds = state.schedules.filter(s => s.iterationId === iter?.id);
+  const approvedTasks = state.tasks.filter(t => {
+    const sch = state.schedules.find(s => s.id === t.scheduleId);
+    return sch && (sch.status === 'APPROVED' && t.source === 'GROUP') || t.source === 'MASTER';
+  });
+
+  document.getElementById('schedule-header').innerHTML = `
+    <h2>总表 — ${iter?.name ?? ''}</h2>
+    ${state.currentUserId && (state.users.find(u => u.id === state.currentUserId)?.role) === 'PROJECT_MANAGER'
+      ? `<button id="btn-add-master-row" class="">+ 新增行</button>`
+      : ''}
+  `;
+
+  document.getElementById('approval-panel').className = '';
+  renderMasterTable(approvedTasks);
+
+  document.getElementById('btn-add-master-row')?.addEventListener('click', handleMasterAddRow);
+}
+
+function renderMasterTable(tasks) {
+  const state = getState();
+  const groups = state.groups;
+  const users = state.users;
+
+  const rows = tasks.map(t => {
+    const owner = users.find(u => u.id === t.ownerId);
+    const source = t.source;
+    return `
+      <tr data-task-id="${t.id}">
+        <td>${t.orderIndex + 1}</td>
+        <td>${t.name}</td>
+        <td>${owner?.name ?? '—'}</td>
+        <td>${t.startDate ?? ''}</td>
+        <td>${t.endDate ?? ''}</td>
+        <td>${t.durationDays ?? ''}</td>
+        <td><span class="source-badge ${source}">${source === 'GROUP' ? 'GL' : 'PM'}</span></td>
+        <td>${t.note ?? ''}</td>
+        <td>
+          ${source === 'MASTER'
+            ? `<button class="btn-del-master-row danger" data-task-id="${t.id}">删除</button>`
+            : '<span class="text-muted">—</span>'}
+        </td>
+      </tr>`;
+  }).join('');
+
+  const wrapper = document.getElementById('wbs-table-wrapper');
+  wrapper.innerHTML = `
+    <table id="wbs-table">
+      <thead id="wbs-thead">
+        <tr>
+          <th>#</th><th>任务名</th><th>负责人</th><th>开始</th><th>结束</th>
+          <th>天数</th><th>来源</th><th>备注</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  wrapper.querySelectorAll('.btn-del-master-row').forEach(btn => {
+    btn.addEventListener('click', () => handleMasterDeleteRow(btn.dataset.taskId));
+  });
+}
+
+// ─── State transition handlers ───────────────────────────────────────────────
+
+import { canTransition, nextStatus } from './domain/stateMachine.js';
+import { addLogEntry } from './components/activityLog.js';
+import { showToast } from './components/toast.js';
+
+function handleSubmit() {
+  const state = getState();
+  const sched = _currentSchedule();
+  if (!sched) return;
+  const tasks = state.tasks.filter(t => t.scheduleId === sched.id);
+  const user = state.users.find(u => u.id === state.currentUserId);
+  const result = canTransition(sched.status, 'submit', user.role, { tasks });
+  if (!result.ok) { showToast(result.message ?? result.code, 'error'); return; }
+  const newStatus = nextStatus(sched.status, 'submit');
+  const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
+  setState({ ...state, schedules: updated });
+  addLogEntry('SUBMIT', state.currentUserId, `${newStatus} ← ${sched.status}`);
+  showToast(`已提交，等待 PM 审批`, 'info');
+}
+
+function handleWithdraw() {
+  const state = getState();
+  const sched = _currentSchedule();
+  if (!sched) return;
+  const user = state.users.find(u => u.id === state.currentUserId);
+  const result = canTransition(sched.status, 'withdraw', user.role, {});
+  if (!result.ok) { showToast(result.message ?? result.code, 'error'); return; }
+  const newStatus = nextStatus(sched.status, 'withdraw');
+  const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
+  setState({ ...state, schedules: updated });
+  addLogEntry('WITHDRAW', state.currentUserId, `撤回至草稿`);
+  showToast(`已撤回`, 'info');
+}
+
+function handleApprove() {
+  const state = getState();
+  const sched = _currentSchedule();
+  if (!sched) return;
+  const user = state.users.find(u => u.id === state.currentUserId);
+  const result = canTransition(sched.status, 'approve', user.role, {});
+  if (!result.ok) { showToast(result.message ?? result.code, 'error'); return; }
+  const newStatus = nextStatus(sched.status, 'approve');
+  const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
+  setState({ ...state, schedules: updated });
+  addLogEntry('APPROVE', state.currentUserId, `已同意`);
+  showToast(`已批准`, 'success');
+}
+
+function handleReject(reason) {
+  const state = getState();
+  const sched = _currentSchedule();
+  if (!sched) return;
+  const user = state.users.find(u => u.id === state.currentUserId);
+  const result = canTransition(sched.status, 'reject', user.role, { reason });
+  if (!result.ok) { showToast(result.message ?? result.code, 'error'); return; }
+  const newStatus = nextStatus(sched.status, 'reject');
+  const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus, rejectReason: reason } : s);
+  setState({ ...state, schedules: updated });
+  addLogEntry('REJECT', state.currentUserId, reason ? `理由：${reason}` : '已拒绝');
+  showToast(`已拒绝：${reason}`, 'warning');
+}
+
+function handleResched() {
+  const state = getState();
+  const sched = _currentSchedule();
+  if (!sched) return;
+  const user = state.users.find(u => u.id === state.currentUserId);
+  const result = canTransition(sched.status, 'reschedule', user.role, {});
+  if (!result.ok) { showToast(result.message ?? result.code, 'error'); return; }
+  const newStatus = nextStatus(sched.status, 'reschedule');
+  const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
+  setState({ ...state, schedules: updated });
+  addLogEntry('RESCHED', state.currentUserId, `PM 发起重新排期`);
+  showToast(`已发起重新排期，组长可重新编辑`, 'warning');
+}
+
+function handleMasterAddRow() {
+  const state = getState();
+  // Add a new MASTER task to the first group's schedule
+  const targetGroupId = state.schedules[0]?.groupId;
+  const targetSchedId = state.schedules[0]?.id;
+  if (!targetSchedId) return;
+
+  let _rowId = Date.now();
+  const newTask = {
+    id: String(++_rowId),
+    scheduleId: targetSchedId,
+    orderIndex: state.tasks.filter(t => t.scheduleId === targetSchedId).length,
+    name: '新任务',
+    ownerId: null,
+    startDate: state.iterations.find(i => i.id === state.activeIterationId)?.startDate ?? '',
+    endDate: '',
+    durationDays: 1,
+    dependencyTaskId: null,
+    source: 'MASTER',
+    note: '',
+  };
+  setState({ ...state, tasks: [...state.tasks, newTask] });
+  addLogEntry('MASTER_ADD', state.currentUserId, `新增总表行：${newTask.name}`);
+  showToast(`已新增总表行`, 'success');
+}
+
+function handleMasterDeleteRow(taskId) {
+  const state = getState();
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task) return;
+  if (task.source !== 'MASTER') {
+    showToast('系统同步行不可删除', 'error'); return;
+  }
+  setState({ ...state, tasks: state.tasks.filter(t => t.id !== taskId) });
+  addLogEntry('MASTER_DEL', state.currentUserId, `删除总表行：${task.name}`);
+  showToast(`已删除`, 'info');
+}
+
+function _currentSchedule() {
+  const state = getState();
+  return state.schedules.find(
+    s => s.iterationId === state.activeIterationId && s.groupId === state.activeGroupId
+  );
+}
+
+// ─── Global events ──────────────────────────────────────────────────────────
+
+function setupGlobalEvents() {
+  // Export
+  document.getElementById('btn-export').addEventListener('click', () => {
+    downloadJSON(exportState(), `oa-backup-${Date.now()}.json`);
+    showToast('已导出 JSON 备份', 'success');
+  });
+
+  // Import
+  document.getElementById('btn-import').addEventListener('click', async () => {
+    const content = await pickJSONFile('file-import');
+    if (!content) return;
+    const result = importState(content);
+    if (!result.ok) { showToast('导入失败：' + result.error, 'error'); return; }
+    showToast('已从 JSON 恢复', 'success');
+  });
+
+  // Ctrl+S trigger
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      scheduleAutoSave(() => showToast('已保存 ' + new Date().toLocaleTimeString(), 'success'));
+    }
+  });
+}
+
+// ─── Start ──────────────────────────────────────────────────────────────────
+init();
