@@ -52,7 +52,11 @@ describe('SchedulesService', () => {
             tasks: [{ name: 'task 1' }],
         });
         mockPrisma.user.findUnique.mockResolvedValue({ id: 'u1', role: 'GROUP_LEADER' });
-        mockPrisma.groupSchedule.update.mockResolvedValue({ id: 'sched-1', status: 'REVIEWING', version: 2 });
+        mockPrisma.groupSchedule.update.mockResolvedValue({
+            id: 'sched-1',
+            status: 'REVIEWING',
+            version: 2,
+        });
         await svc.submit('sched-1', 'u1');
         expect(shared_1.canTransition).toHaveBeenCalledWith('PENDING', 'REVIEWING', 'GROUP_LEADER', {
             tasksNonEmpty: true,
@@ -81,7 +85,11 @@ describe('SchedulesService', () => {
             tasks: [{ name: 'task' }],
         });
         mockPrisma.user.findUnique.mockResolvedValue({ id: 'u1', role: 'GROUP_LEADER' });
-        mockPrisma.groupSchedule.update.mockResolvedValue({ id: 'sched-1', status: 'REVIEWING', version: 2 });
+        mockPrisma.groupSchedule.update.mockResolvedValue({
+            id: 'sched-1',
+            status: 'REVIEWING',
+            version: 2,
+        });
         await svc.submit('sched-1', 'u1');
         expect(mockOutbox.emit).toHaveBeenCalledWith('SCHEDULE_SUBMITTED', {
             scheduleId: 'sched-1',
@@ -98,7 +106,11 @@ describe('SchedulesService', () => {
             iterationId: 'iter-1',
         });
         mockPrisma.user.findUnique.mockResolvedValue({ id: 'u1', role: 'GROUP_LEADER' });
-        mockPrisma.groupSchedule.update.mockResolvedValue({ id: 'sched-1', status: 'PENDING', version: 2 });
+        mockPrisma.groupSchedule.update.mockResolvedValue({
+            id: 'sched-1',
+            status: 'PENDING',
+            version: 2,
+        });
         await svc.withdraw('sched-1', 'u1');
         expect(mockOutbox.dismissPendingForEvent).toHaveBeenCalledWith('SCHEDULE_SUBMITTED', 'sched-1');
     });
@@ -125,7 +137,11 @@ describe('SchedulesService', () => {
             tasks: [],
         });
         mockPrisma.user.findUnique.mockResolvedValue({ id: 'pm1', role: 'PROJECT_MANAGER' });
-        mockPrisma.groupSchedule.update.mockResolvedValue({ id: 'sched-1', status: 'APPROVED', version: 2 });
+        mockPrisma.groupSchedule.update.mockResolvedValue({
+            id: 'sched-1',
+            status: 'APPROVED',
+            version: 2,
+        });
         mockPrisma.approvalRecord.create.mockResolvedValue({});
         await svc.approve('sched-1', 'pm1');
         expect(mockPrisma.approvalRecord.create).toHaveBeenCalledWith({
@@ -145,7 +161,11 @@ describe('SchedulesService', () => {
             iterationId: 'iter-1',
         });
         mockPrisma.user.findUnique.mockResolvedValue({ id: 'pm1', role: 'PROJECT_MANAGER' });
-        mockPrisma.groupSchedule.update.mockResolvedValue({ id: 'sched-1', status: 'REJECTED', version: 2 });
+        mockPrisma.groupSchedule.update.mockResolvedValue({
+            id: 'sched-1',
+            status: 'REJECTED',
+            version: 2,
+        });
         mockPrisma.approvalRecord.create.mockResolvedValue({});
         await svc.reschedule('sched-1', 'pm1');
         expect(shared_1.canTransition).toHaveBeenCalledWith('APPROVED', 'REJECTED', 'PROJECT_MANAGER', {});

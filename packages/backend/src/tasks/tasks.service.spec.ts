@@ -108,7 +108,7 @@ describe('TasksService', () => {
       response: { code: 'ONE_TO_ONE_VIOLATION' },
     });
     // Verify cyclePath is absent from the thrown error
-    const err = await svc.setDependency('t1', 't3', 'u1').catch(e => e.getResponse());
+    const err = await svc.setDependency('t1', 't3', 'u1').catch((e) => e.getResponse());
     expect(err).not.toMatchObject({ cyclePath: expect.anything() });
   });
 
@@ -132,9 +132,19 @@ describe('TasksService', () => {
   // ── UT-TSK-06: propagateFinishChange returns downstream task ids ──────────────
   it('UT-TSK-06: propagateFinishChange returns all tasks downstream of the given task', async () => {
     const { buildGraph } = jest.requireMock('@oa-mvp/shared');
-    buildGraph.mockReturnValue(new Map([['t1', []], ['t2', ['t1']], ['t3', ['t1']], ['t4', ['t2']]]));
+    buildGraph.mockReturnValue(
+      new Map([
+        ['t1', []],
+        ['t2', ['t1']],
+        ['t3', ['t1']],
+        ['t4', ['t2']],
+      ]),
+    );
     mockPrisma.task.findMany.mockResolvedValue([
-      { id: 't1' }, { id: 't2' }, { id: 't3' }, { id: 't4' },
+      { id: 't1' },
+      { id: 't2' },
+      { id: 't3' },
+      { id: 't4' },
     ]);
 
     const result = await svc.propagateFinishChange('t1');

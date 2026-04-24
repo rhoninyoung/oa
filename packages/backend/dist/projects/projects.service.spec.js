@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+// Jest: findMany/upsert 等单对象参数 —— mock.calls[0] 为 [一个对象]；用 const [x] 而非 const [,x]。
 const projects_service_js_1 = require("./projects.service.js");
 const mockPrisma = {
     user: { findUnique: jest.fn() },
@@ -12,27 +13,39 @@ describe('ProjectsService', () => {
         jest.clearAllMocks();
     });
     // ── UT-PRJ-01: PROJECT_MANAGER sees all projects ─────────────────────────────
-    it('UT-PRJ-01: PROJECT_MANAGER uses empty where clause (matches all)', async () => {
+    it('UT-PRJ-01: PROJECT_MANAGER has no where filter (matches all)', async () => {
         mockPrisma.user.findUnique.mockResolvedValue({ id: 'u_pm', role: 'PROJECT_MANAGER' });
         mockPrisma.project.findMany.mockResolvedValue([]);
-        await svc.findAll('u_pm', 'PROJECT_MANAGER');
-        const [, callArgs] = mockPrisma.project.findMany.mock.calls[0];
-        // { AND: [] } is truthy in Prisma – it matches all records
-        expect(callArgs.where).toEqual({ AND: [] });
+        await svc.findAll('u_pm');
+        const [callArgs] = mockPrisma.project.findMany.mock.calls[0];
+        // PM path: no where clause, returns all projects
+        expect(callArgs.where).toBeUndefined();
     });
-    // ── UT-PRJ-02: GROUP_LEADER sees only their projects ─────────────────────────
-    it('UT-PRJ-02: GROUP_LEADER filters by member id', async () => {
-        mockPrisma.user.findUnique.mockResolvedValue({ id: 'u_gl', role: 'GROUP_LEADER' });
+    // ── UT-PRJ-02: GROUP_LEADER sees only their groups projects ─────────────────
+    it('UT-PRJ-02: GROUP_LEADER filters by their groupId via schedules', async () => {
+        mockPrisma.user.findUnique.mockResolvedValue({
+            id: 'u_gl',
+            role: 'GROUP_LEADER',
+            groupId: 'g1',
+        });
         mockPrisma.project.findMany.mockResolvedValue([]);
-        await svc.findAll('u_gl', 'GROUP_LEADER');
-        const [, callArgs] = mockPrisma.project.findMany.mock.calls[0];
-        expect(callArgs.where).toEqual({ members: { some: { id: 'u_gl' } } });
+        await svc.findAll('u_gl');
+        const [callArgs] = mockPrisma.project.findMany.mock.calls[0];
+        expect(callArgs.where).toEqual({
+            iterations: {
+                some: {
+                    schedules: {
+                        some: { groupId: 'g1' },
+                    },
+                },
+            },
+        });
     });
     // ── UT-PRJ-03: findAll includes iterations and schedule summary ───────────────
     it('UT-PRJ-03: findAll includes iterations and schedules in response', async () => {
         mockPrisma.user.findUnique.mockResolvedValue({ id: 'u_pm', role: 'PROJECT_MANAGER' });
         mockPrisma.project.findMany.mockResolvedValue([{ id: 'proj-1', name: 'OA', iterations: [] }]);
-        const result = await svc.findAll('u_pm', 'PROJECT_MANAGER');
+        const result = await svc.findAll('u_pm');
         expect(result).toEqual([{ id: 'proj-1', name: 'OA', iterations: [] }]);
         expect(mockPrisma.project.findMany).toHaveBeenCalledWith(expect.objectContaining({
             include: {

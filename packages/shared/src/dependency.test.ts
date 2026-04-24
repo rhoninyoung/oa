@@ -73,10 +73,7 @@ describe('detectCycle', () => {
 describe('setDependency', () => {
   // ── DT-DEP-06: task with existing dep → ONE_TO_ONE_VIOLATION ─────────────────
   it('DT-DEP-06: task with existing dep → ONE_TO_ONE_VIOLATION', () => {
-    const tasks: Task[] = [
-      makeTask('T1'),
-      { ...makeTask('T2'), dependencyTaskId: 'T1' },
-    ];
+    const tasks: Task[] = [makeTask('T1'), { ...makeTask('T2'), dependencyTaskId: 'T1' }];
     const result = setDependency('T2', 'T3', tasks);
     expect(result).toMatchObject({ ok: false, code: 'ONE_TO_ONE_VIOLATION' });
   });
@@ -86,7 +83,7 @@ describe('setDependency', () => {
     const result = setDependency('T2', 'T1', tasks);
     expect(result).toMatchObject({ ok: true });
     const updated = (result as { ok: true; updatedTasks: Task[] }).updatedTasks;
-    const t2 = updated.find(t => t.id === 'T2');
+    const t2 = updated.find((t) => t.id === 'T2');
     expect(t2?.dependencyTaskId).toBe('T1');
   });
 

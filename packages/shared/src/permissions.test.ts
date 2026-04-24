@@ -64,11 +64,21 @@ describe('permissions', () => {
       expect(permissions('PROJECT_MANAGER', ctx, 'addRow')).toEqual({ allowed: true });
     });
     it('deleteRow, source=MASTER → allow', () => {
-      const ctx = { type: 'master' as const, groupId: 'g1', ownGroup: false, taskSource: 'MASTER' as const };
+      const ctx = {
+        type: 'master' as const,
+        groupId: 'g1',
+        ownGroup: false,
+        taskSource: 'MASTER' as const,
+      };
       expect(permissions('PROJECT_MANAGER', ctx, 'deleteRow')).toEqual({ allowed: true });
     });
     it('deleteRow, source=GROUP → deny', () => {
-      const ctx = { type: 'master' as const, groupId: 'g1', ownGroup: false, taskSource: 'GROUP' as const };
+      const ctx = {
+        type: 'master' as const,
+        groupId: 'g1',
+        ownGroup: false,
+        taskSource: 'GROUP' as const,
+      };
       expect(permissions('PROJECT_MANAGER', ctx, 'deleteRow')).toMatchObject({
         allowed: false,
         code: 'SYNC_ROW_READONLY',

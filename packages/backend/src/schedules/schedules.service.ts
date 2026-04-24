@@ -8,7 +8,18 @@ import {
 import { PrismaService } from '../prisma.service.js';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { canTransition } from '@oa-mvp/shared';
-import type { ScheduleStatus, Role } from '@oa-mvp/shared';
+import type { Role } from '@oa-mvp/shared';
+
+interface TaskInput {
+  id?: string;
+  name?: string;
+  ownerId?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  durationDays?: number | null;
+  dependencyTaskId?: string | null;
+  source?: 'GROUP' | 'MASTER';
+}
 
 @Injectable()
 export class SchedulesService {
@@ -19,7 +30,7 @@ export class SchedulesService {
 
   // ── Read ─────────────────────────────────────────────────────────────────────
 
-  async findOne(scheduleId: string, userId: string) {
+  async findOne(scheduleId: string, _userId: string) {
     const schedule = await this.prisma.groupSchedule.findUnique({
       where: { id: scheduleId },
       include: { tasks: { orderBy: { orderIndex: 'asc' } } },
@@ -28,7 +39,7 @@ export class SchedulesService {
     return schedule;
   }
 
-  async findForIteration(iterationId: string, userId: string, userRole: Role) {
+  async findForIteration(iterationId: string, _userId: string, _userRole: Role) {
     return this.prisma.groupSchedule.findMany({
       where: { iterationId },
       include: { tasks: { orderBy: { orderIndex: 'asc' } } },
@@ -37,7 +48,7 @@ export class SchedulesService {
 
   // ── Draft auto-save with optimistic lock ────────────────────────────────────
 
-  async saveDraft(scheduleId: string, tasks: unknown[], version: number, userId: string) {
+  async saveDraft(scheduleId: string, tasks: unknown[], version: number, _userId: string) {
     const schedule = await this.prisma.groupSchedule.findUnique({ where: { id: scheduleId } });
     if (!schedule) throw new NotFoundException();
 
@@ -50,8 +61,8 @@ export class SchedulesService {
 
     // Delete existing tasks and recreate
     await this.prisma.task.deleteMany({ where: { scheduleId } });
-    const created = await Promise.all(
-      (tasks as any[]).map((t, i) =>
+    await Promise.all(
+      (tasks as TaskInput[]).map((t, i) =>
         this.prisma.task.create({
           data: {
             id: t.id || undefined,
@@ -91,8 +102,10 @@ export class SchedulesService {
     ]);
     if (!schedule || !user) throw new NotFoundException();
 
-    const tasksNonEmpty = schedule.tasks.some(t => t.name.trim() !== '');
-    const result = canTransition(schedule.status, 'REVIEWING', user.role as Role, { tasksNonEmpty });
+    const tasksNonEmpty = schedule.tasks.some((t) => t.name.trim() !== '');
+    const result = canTransition(schedule.status, 'REVIEWING', user.role as Role, {
+      tasksNonEmpty,
+    });
     if (!result.ok) throw new BadRequestException({ code: result.code });
 
     const updated = await this.prisma.groupSchedule.update({
@@ -163,7 +176,9 @@ export class SchedulesService {
     ]);
     if (!schedule || !user) throw new NotFoundException();
 
-    const result = canTransition(schedule.status, 'REJECTED', user.role as Role, { rejectReason: reason });
+    const result = canTransition(schedule.status, 'REJECTED', user.role as Role, {
+      rejectReason: reason,
+    });
     if (!result.ok) throw new ForbiddenException({ code: result.code });
 
     const updated = await this.prisma.groupSchedule.update({

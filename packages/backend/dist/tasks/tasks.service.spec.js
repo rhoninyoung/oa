@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+// Jest: Prisma/共享库 mock 与实现一致（如 SetDependencyResult 的 code 与 cyclePath 分支；buildGraph 边方向=任务→依赖前驱）。
 const tasks_service_js_1 = require("./tasks.service.js");
 // Mock the entire shared module – only setDependency / buildGraph / detectCycle are used
 jest.mock('@oa-mvp/shared', () => ({
@@ -39,7 +40,7 @@ describe('TasksService', () => {
     // ── UT-TSK-02: deleteRow throws NotFoundException when task not found ───────
     it('UT-TSK-02: deleteRow throws NotFoundException when task does not exist', async () => {
         mockPrisma.task.findUnique.mockResolvedValue(null);
-        await expect(svc.deleteRow('nonexistent', 'u1')).rejects.toThrow('Task not found');
+        await expect(svc.deleteRow('nonexistent', 'u1')).rejects.toThrow('Not Found');
     });
     // ── UT-TSK-03: deleteRow allows MASTER rows regardless of schedule status ───
     it('UT-TSK-03: MASTER source rows can be deleted in any schedule status', async () => {
@@ -70,19 +71,58 @@ describe('TasksService', () => {
     // ── UT-TSK-05: setDependency rejects a cycle ─────────────────────────────────
     it('UT-TSK-05: setDependency throws BadRequestException when cycle is detected', async () => {
         const { setDependency } = jest.requireMock('@oa-mvp/shared');
-        setDependency.mockReturnValue({ ok: false, code: 'CYCLE_DETECTED', cyclePath: ['t1', 't2'] });
+        setDependency.mockReturnValue({ ok: false, code: 'CYCLE', cyclePath: ['t1', 't2'] });
         mockPrisma.task.findUnique.mockResolvedValue({ id: 't1', scheduleId: 'sched-1' });
         mockPrisma.task.findMany.mockResolvedValue([]);
         await expect(svc.setDependency('t1', 't2', 'u1')).rejects.toMatchObject({
-            response: { code: 'CYCLE_DETECTED', cyclePath: ['t1', 't2'] },
+            response: { code: 'CYCLE', cyclePath: ['t1', 't2'] },
+        });
+    });
+    // ── UT-TSK-07: ONE_TO_ONE_VIOLATION must NOT include cyclePath ──────────────
+    // REGRESSION: previously the code accessed result.cyclePath unconditionally,
+    // triggering TS2339 because ONE_TO_ONE_VIOLATION has no cyclePath property.
+    it('UT-TSK-07: ONE_TO_ONE_VIOLATION throws without cyclePath in error object', async () => {
+        const { setDependency } = jest.requireMock('@oa-mvp/shared');
+        // Return type has .code but NOT .cyclePath — this is the exact shape that caused TS2339
+        setDependency.mockReturnValue({ ok: false, code: 'ONE_TO_ONE_VIOLATION' });
+        mockPrisma.task.findUnique.mockResolvedValue({ id: 't1', scheduleId: 'sched-1' });
+        mockPrisma.task.findMany.mockResolvedValue([]);
+        // Must throw BadRequestException with only code — no cyclePath key allowed
+        await expect(svc.setDependency('t1', 't3', 'u1')).rejects.toMatchObject({
+            response: { code: 'ONE_TO_ONE_VIOLATION' },
+        });
+        // Verify cyclePath is absent from the thrown error
+        const err = await svc.setDependency('t1', 't3', 'u1').catch((e) => e.getResponse());
+        expect(err).not.toMatchObject({ cyclePath: expect.anything() });
+    });
+    // ── UT-TSK-08: setDependency success → updates task.dependencyTaskId ──────────
+    it('UT-TSK-08: setDependency succeeds and persists new dependency', async () => {
+        const { setDependency } = jest.requireMock('@oa-mvp/shared');
+        setDependency.mockReturnValue({ ok: true, updatedTasks: [] });
+        mockPrisma.task.findUnique.mockResolvedValue({ id: 't1', scheduleId: 'sched-1' });
+        mockPrisma.task.findMany.mockResolvedValue([]);
+        mockPrisma.task.update.mockResolvedValue({});
+        const result = await svc.setDependency('t1', 't2', 'u1');
+        expect(result).toEqual({ ok: true });
+        expect(mockPrisma.task.update).toHaveBeenCalledWith({
+            where: { id: 't1' },
+            data: { dependencyTaskId: 't2' },
         });
     });
     // ── UT-TSK-06: propagateFinishChange returns downstream task ids ──────────────
     it('UT-TSK-06: propagateFinishChange returns all tasks downstream of the given task', async () => {
         const { buildGraph } = jest.requireMock('@oa-mvp/shared');
-        buildGraph.mockReturnValue(new Map([['t1', ['t2', 't3']], ['t2', ['t4']], ['t3', []]]));
+        buildGraph.mockReturnValue(new Map([
+            ['t1', []],
+            ['t2', ['t1']],
+            ['t3', ['t1']],
+            ['t4', ['t2']],
+        ]));
         mockPrisma.task.findMany.mockResolvedValue([
-            { id: 't1' }, { id: 't2' }, { id: 't3' }, { id: 't4' },
+            { id: 't1' },
+            { id: 't2' },
+            { id: 't3' },
+            { id: 't4' },
         ]);
         const result = await svc.propagateFinishChange('t1');
         expect(result.affectedTaskIds).toEqual(expect.arrayContaining(['t2', 't3', 't4']));

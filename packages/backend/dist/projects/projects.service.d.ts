@@ -2,7 +2,7 @@ import { PrismaService } from '../prisma.service.js';
 export declare class ProjectsService {
     private prisma;
     constructor(prisma: PrismaService);
-    findAll(userId: string, userRole: string): Promise<({
+    findAll(userId: string): Promise<({
         iterations: ({
             schedules: {
                 groupId: string;

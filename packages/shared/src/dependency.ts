@@ -14,7 +14,9 @@ export function buildGraph(tasks: Task[]): Map<string, Set<string>> {
 
 /** DFS cycle detection. Returns the cycle path if found. */
 export function detectCycle(graph: Map<string, Set<string>>): CycleDetectionResult {
-  const WHITE = 0, GRAY = 1, BLACK = 2;
+  const WHITE = 0,
+    GRAY = 1,
+    BLACK = 2;
   const color = new Map<string, number>();
   for (const id of graph.keys()) color.set(id, WHITE);
 
@@ -61,7 +63,7 @@ export function setDependency(
   depId: string | null,
   existingTasks: Task[],
 ): SetDependencyResult {
-  const task = existingTasks.find(t => t.id === taskId);
+  const task = existingTasks.find((t) => t.id === taskId);
   if (!task) return { ok: false, code: 'CYCLE', cyclePath: [] };
 
   if (depId !== null) {
@@ -76,8 +78,8 @@ export function setDependency(
     }
 
     // Cycle check
-    const tempTasks: Task[] = existingTasks.map(t =>
-      t.id === taskId ? { ...t, dependencyTaskId: depId } : t
+    const tempTasks: Task[] = existingTasks.map((t) =>
+      t.id === taskId ? { ...t, dependencyTaskId: depId } : t,
     );
     const graph = buildGraph(tempTasks);
     const cycle = detectCycle(graph);
@@ -86,8 +88,8 @@ export function setDependency(
     }
   }
 
-  const updatedTasks = existingTasks.map(t =>
-    t.id === taskId ? { ...t, dependencyTaskId: depId } : t
+  const updatedTasks = existingTasks.map((t) =>
+    t.id === taskId ? { ...t, dependencyTaskId: depId } : t,
   );
 
   return { ok: true, updatedTasks };

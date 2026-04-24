@@ -1,32 +1,39 @@
-import { Controller, Get, Post, Delete, Param, Body, Headers, UnauthorizedException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Param,
+  Body,
+  Headers,
+  UnauthorizedException,
+  Inject,
+} from '@nestjs/common';
 import { MasterService } from './master.service.js';
 
 @Controller('master')
 export class MasterController {
-  constructor(private readonly svc: MasterService) {}
-
-  private getUserId(headers: Headers) {
-    const uid = headers.get('x-user-id') ?? undefined;
-    if (!uid) throw new UnauthorizedException();
-    return uid;
-  }
+  constructor(@Inject(MasterService) private readonly svc: MasterService) {}
 
   @Get(':iterationId')
-  getMasterView(@Param('iterationId') id: string, @Headers() headers: Headers) {
-    return this.svc.getMasterView(id, this.getUserId(headers));
+  getMasterView(@Param('iterationId') id: string, @Headers('x-user-id') userId: string) {
+    if (!userId) throw new UnauthorizedException();
+    return this.svc.getMasterView(id, userId);
   }
 
   @Post(':iterationId/rows')
   addRow(
     @Param('iterationId') id: string,
     @Body() body: { ownerId: string },
-    @Headers() headers: Headers,
+    @Headers('x-user-id') userId: string,
   ) {
-    return this.svc.addMasterRow(id, body.ownerId, this.getUserId(headers));
+    if (!userId) throw new UnauthorizedException();
+    return this.svc.addMasterRow(id, body.ownerId, userId);
   }
 
   @Delete('rows/:taskId')
-  deleteRow(@Param('taskId') id: string, @Headers() headers: Headers) {
-    return this.svc.deleteMasterRow(id, this.getUserId(headers));
+  deleteRow(@Param('taskId') id: string, @Headers('x-user-id') userId: string) {
+    if (!userId) throw new UnauthorizedException();
+    return this.svc.deleteMasterRow(id, userId);
   }
 }

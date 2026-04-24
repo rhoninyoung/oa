@@ -4,29 +4,29 @@ export declare class MasterService {
     private prisma;
     private outbox;
     constructor(prisma: PrismaService, outbox: OutboxService);
-    getMasterView(iterationId: string, userId: string): Promise<{
+    getMasterView(iterationId: string, _userId: string): Promise<{
         id: string;
-        source: import("@prisma/client").$Enums.TaskSource;
-        orderIndex: number;
         name: string;
-        scheduleId: string;
-        ownerId: string | null;
         startDate: Date | null;
         endDate: Date | null;
+        scheduleId: string;
+        orderIndex: number;
+        ownerId: string | null;
         durationDays: number | null;
         dependencyTaskId: string | null;
+        source: import("@prisma/client").$Enums.TaskSource;
     }[]>;
     addMasterRow(iterationId: string, ownerId: string, userId: string): Promise<{
         id: string;
-        source: import("@prisma/client").$Enums.TaskSource;
-        orderIndex: number;
         name: string;
-        scheduleId: string;
-        ownerId: string | null;
         startDate: Date | null;
         endDate: Date | null;
+        scheduleId: string;
+        orderIndex: number;
+        ownerId: string | null;
         durationDays: number | null;
         dependencyTaskId: string | null;
+        source: import("@prisma/client").$Enums.TaskSource;
     }>;
     deleteMasterRow(taskId: string, userId: string): Promise<{
         deleted: boolean;

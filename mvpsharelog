@@ -1,0 +1,71 @@
+root@2204:/home/rhonin/oa# pnpm --filter @oa-mvp/shared test
+.                                        |  WARN  Unsupported engine: wanted: {"node":">=20.0.0"} (current: {"node":"v18.20.8","pnpm":"10.33.1"})
+
+> @oa-mvp/shared@0.1.0 test /home/rhonin/oa/packages/shared
+> jest
+
+ FAIL  src/permissions.test.ts
+  ● Test suite failed to run
+
+    Cannot find module './permissions.js' from 'src/permissions.test.ts'
+
+    > 1 | import { permissions } from './permissions.js';
+        | ^
+      2 |
+      3 | describe('permissions', () => {
+      4 |   // ── DT-PERM-01: GL对本组schedule ─────────────────────────────────────────────
+
+      at Resolver._throwModNotFoundError (../../node_modules/.pnpm/jest-resolve@29.7.0/node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> (src/permissions.test.ts:1:1)
+
+ FAIL  src/dependency.test.ts
+  ● Test suite failed to run
+
+    Cannot find module './dependency.js' from 'src/dependency.test.ts'
+
+    > 1 | import { detectCycle, setDependency } from './dependency.js';
+        | ^
+      2 | import type { Task } from './types.js';
+      3 |
+      4 | const makeTask = (id: string, scheduleId = 's1', depId: string | null = null): Task => ({
+
+      at Resolver._throwModNotFoundError (../../node_modules/.pnpm/jest-resolve@29.7.0/node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> (src/dependency.test.ts:1:1)
+
+ FAIL  src/calendar.test.ts
+  ● Test suite failed to run
+
+    Cannot find module './calendar.js' from 'src/calendar.test.ts'
+
+    > 1 | import { WorkCalendar } from './calendar.js';
+        | ^
+      2 |
+      3 | describe('WorkCalendar', () => {
+      4 |   // ── DT-CAL-01..05: addWorkDays ────────────────────────────────────────────────
+
+      at Resolver._throwModNotFoundError (../../node_modules/.pnpm/jest-resolve@29.7.0/node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> (src/calendar.test.ts:1:1)
+
+ FAIL  src/stateMachine.test.ts
+  ● Test suite failed to run
+
+    Cannot find module './stateMachine.js' from 'src/stateMachine.test.ts'
+
+    > 1 | import { canTransition } from './stateMachine.js';
+        | ^
+      2 | import type { ScheduleStatus, Role } from './types.js';
+      3 |
+      4 | describe('canTransition', () => {
+
+      at Resolver._throwModNotFoundError (../../node_modules/.pnpm/jest-resolve@29.7.0/node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> (src/stateMachine.test.ts:1:1)
+
+Test Suites: 4 failed, 4 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        2.117 s
+Ran all test suites.
+/home/rhonin/oa/packages/shared:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @oa-mvp/shared@0.1.0 test: `jest`
+Exit status 1
+root@2204:/home/rhonin/oa# 

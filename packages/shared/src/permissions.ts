@@ -3,7 +3,11 @@ import type { Role, PermissionAction, PermissionContext } from './types.js';
 type PermissionResult = { allowed: true } | { allowed: false; code: string };
 
 /** Pure function: does the given role have permission to perform action in context? */
-export function permissions(role: Role, ctx: PermissionContext, action: PermissionAction): PermissionResult {
+export function permissions(
+  role: Role,
+  ctx: PermissionContext,
+  action: PermissionAction,
+): PermissionResult {
   // ── Group Leader ─────────────────────────────────────────────────────────────
   if (role === 'GROUP_LEADER') {
     // 本组 schedule
@@ -11,7 +15,13 @@ export function permissions(role: Role, ctx: PermissionContext, action: Permissi
       if (action === 'read' || action === 'edit' || action === 'submit' || action === 'withdraw') {
         return { allowed: true };
       }
-      if (action === 'approve' || action === 'reject' || action === 'reschedule' || action === 'addRow' || action === 'deleteRow') {
+      if (
+        action === 'approve' ||
+        action === 'reject' ||
+        action === 'reschedule' ||
+        action === 'addRow' ||
+        action === 'deleteRow'
+      ) {
         return { allowed: false, code: 'ACTOR_NOT_PM' };
       }
     }
@@ -30,11 +40,21 @@ export function permissions(role: Role, ctx: PermissionContext, action: Permissi
   // ── Project Manager ─────────────────────────────────────────────────────────
   if (role === 'PROJECT_MANAGER') {
     if (ctx.type === 'schedule') {
-      if (action === 'read' || action === 'approve' || action === 'reject' || action === 'reschedule') {
+      if (
+        action === 'read' ||
+        action === 'approve' ||
+        action === 'reject' ||
+        action === 'reschedule'
+      ) {
         return { allowed: true };
       }
       // PM cannot directly edit tasks (only via master)
-      if (action === 'edit' || action === 'submit' || action === 'withdraw' || action === 'addRow') {
+      if (
+        action === 'edit' ||
+        action === 'submit' ||
+        action === 'withdraw' ||
+        action === 'addRow'
+      ) {
         return { allowed: false, code: 'ACTOR_NOT_OWNER' };
       }
       if (action === 'deleteRow') {

@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+// Jest: prisma.*.upsert/findMany 等均为「单对象实参」——取 mock 用 const [args] = calls[0]，勿拆成多位置参数。
 const outbox_service_js_1 = require("./outbox.service.js");
 const mockPrisma = {
     notificationOutbox: {
@@ -27,17 +28,20 @@ describe('OutboxService', () => {
         const payload = { scheduleId: 's1', version: 2, action: 'submit' };
         await svc.emit('SCHEDULE_SUBMITTED', payload);
         expect(mockPrisma.notificationOutbox.upsert).toHaveBeenCalledTimes(1);
-        const [where, create, update] = mockPrisma.notificationOutbox.upsert.mock.calls[0];
-        expect(where).toEqual({ idempotencyKey: 'SCHEDULE_SUBMITTED|s1|submit|2' });
-        expect(create).toMatchObject({ idempotencyKey: 'SCHEDULE_SUBMITTED|s1|submit|2', type: 'SCHEDULE_SUBMITTED' });
+        const [args] = mockPrisma.notificationOutbox.upsert.mock.calls[0];
+        expect(args.where).toEqual({ idempotencyKey: 'SCHEDULE_SUBMITTED|s1|submit|2' });
+        expect(args.create).toMatchObject({
+            idempotencyKey: 'SCHEDULE_SUBMITTED|s1|submit|2',
+            type: 'SCHEDULE_SUBMITTED',
+        });
         // payload is cast to any – just verify it's passed through
-        expect(create.payload).toBe(payload);
+        expect(args.create.payload).toBe(payload);
     });
     // ── UT-OBX-04: emit upserts update payload with null dispatchedAt ───────────
     it('UT-OBX-04: emit upserts update resets dispatchedAt to null', async () => {
         await svc.emit('SCHEDULE_SUBMITTED', { scheduleId: 's1', version: 1 });
-        const [, create, update] = mockPrisma.notificationOutbox.upsert.mock.calls[0];
-        expect(update).toMatchObject({ dispatchedAt: null });
+        const [args] = mockPrisma.notificationOutbox.upsert.mock.calls[0];
+        expect(args.update).toMatchObject({ dispatchedAt: null });
     });
     // ── UT-OBX-05: dismissPendingForEvent calls updateMany ─────────────────────
     it('UT-OBX-05: dismissPendingForEvent calls updateMany with correct where', async () => {
@@ -55,7 +59,9 @@ describe('OutboxService', () => {
         const entry = { id: 'entry-1', type: 'SCHEDULE_SUBMITTED', payload: {}, dispatchedAt: null };
         mockPrisma.notificationOutbox.findMany.mockResolvedValue([entry]);
         await svc.dispatchAll();
-        expect(mockPrisma.notificationOutbox.findMany).toHaveBeenCalledWith({ where: { dispatchedAt: null } });
+        expect(mockPrisma.notificationOutbox.findMany).toHaveBeenCalledWith({
+            where: { dispatchedAt: null },
+        });
         expect(mockPrisma.notificationOutbox.update).toHaveBeenCalledWith({
             where: { id: 'entry-1' },
             data: { dispatchedAt: expect.any(Date) },

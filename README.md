@@ -68,6 +68,49 @@ pnpm test:e2e
 | u2 | 陈思远 | 组长 (G2) |
 | p1 | 王架构 | 项目经理 |
 
+## 演示流程（推荐）
+
+按以下步骤走完 GL → PM → 总表完整主链路：
+
+```
+1. 访问 http://localhost:5173 ，默认以 u1（组长 G1）登录
+2. 左侧栏点击"2026-Q2 迭代" → 双击"组: g1"进入排期表
+3. 在"任务名"列输入内容（如"需求文档编写"），等待 30 秒自动保存（网络面板见 PATCH 200）
+4. 点击"提交"按钮 → 状态变为"撤回"（REVIEWING）
+5. 右上角切换为 p1（王架构，PM）→ 左侧栏再次点击"2026-Q2 迭代"
+   → g1 行显示 REVIEWING 黄底标签
+6. 点击"组: g1"进入排期表 → 点"同意" → 状态变为"已审批"（绿色）
+7. 访问 http://localhost:5173/iterations/iter-1/master 进入项目总表
+   → 看到来自 g1 的"组"来源行（蓝色标签）
+8. （可选）作为 PM 点击"+ 新增行"，输入 u1 可新增 PM 直接分配的 MASTER 行（紫色标签）
+```
+
+## 常见问题排查
+
+### 页面空白或数据加载失败
+
+1. 检查后端启动日志是否有 `[oa-mvp] DB ready:` 行
+2. 如果计数为 0 或有警告，运行 `pnpm seed` 填充种子数据
+3. 确认 docker compose 容器在运行：`docker compose ps`
+4. 检查浏览器控制台 Network 面板是否有 5xx 响应
+
+### 后端启动报错
+
+```bash
+# 重置数据库（清空 + 重新 seed）
+cd packages/backend
+npx prisma migrate reset --force
+```
+
+## 测试
+
+E2E 测试（T4.1/T4.2/T4.8 已覆盖完整链路）：
+
+```bash
+# 需要先启动：docker compose up -d && pnpm dev
+pnpm test:e2e
+```
+
 ## 文档
 
 - [PLAN.md](docs/PLAN.md) — 开发计划与 MVP 范围

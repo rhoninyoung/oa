@@ -5,9 +5,13 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TasksService = void 0;
 const common_1 = require("@nestjs/common");
+const prisma_service_js_1 = require("../prisma.service.js");
 const shared_1 = require("@oa-mvp/shared");
 let TasksService = class TasksService {
     prisma;
@@ -20,7 +24,23 @@ let TasksService = class TasksService {
             throw new common_1.NotFoundException('Task not found');
         return task;
     }
-    async insertRow(scheduleId, afterIndex, userId) {
+    async updateTask(taskId, data, _userId) {
+        const task = await this.prisma.task.findUnique({ where: { id: taskId } });
+        if (!task)
+            throw new common_1.NotFoundException('Task not found');
+        return this.prisma.task.update({
+            where: { id: taskId },
+            data: {
+                name: data.name ?? task.name,
+                ownerId: data.ownerId ?? task.ownerId,
+                startDate: data.startDate ? new Date(data.startDate) : task.startDate,
+                endDate: data.endDate ? new Date(data.endDate) : task.endDate,
+                durationDays: data.durationDays ?? task.durationDays,
+                dependencyTaskId: data.dependencyTaskId ?? task.dependencyTaskId,
+            },
+        });
+    }
+    async insertRow(scheduleId, afterIndex, _userId) {
         // Renumber all tasks after `afterIndex`
         await this.prisma.task.updateMany({
             where: { scheduleId, orderIndex: { gt: afterIndex } },
@@ -30,7 +50,7 @@ let TasksService = class TasksService {
             data: { scheduleId, orderIndex: afterIndex + 1, name: '', source: 'GROUP' },
         });
     }
-    async deleteRow(taskId, userId) {
+    async deleteRow(taskId, _userId) {
         const task = await this.prisma.task.findUnique({
             where: { id: taskId },
             include: { schedule: { select: { status: true } } },
@@ -50,18 +70,26 @@ let TasksService = class TasksService {
         });
         for (let i = 0; i < remaining.length; i++) {
             if (remaining[i].orderIndex !== i + 1) {
-                await this.prisma.task.update({ where: { id: remaining[i].id }, data: { orderIndex: i + 1 } });
+                await this.prisma.task.update({
+                    where: { id: remaining[i].id },
+                    data: { orderIndex: i + 1 },
+                });
             }
         }
         return { deleted: true };
     }
-    async setDependency(taskId, depId, userId) {
+    async setDependency(taskId, depId, _userId) {
         const tasks = await this.prisma.task.findMany({
-            where: { scheduleId: (await this.prisma.task.findUnique({ where: { id: taskId } }))?.scheduleId ?? '' },
+            where: {
+                scheduleId: (await this.prisma.task.findUnique({ where: { id: taskId } }))?.scheduleId ?? '',
+            },
         });
         const result = (0, shared_1.setDependency)(taskId, depId, tasks);
         if (!result.ok) {
-            throw new common_1.BadRequestException({ code: result.code, cyclePath: result.cyclePath });
+            const err = { code: result.code };
+            if (result.code === 'CYCLE')
+                err.cyclePath = result.cyclePath;
+            throw new common_1.BadRequestException(err);
         }
         await this.prisma.task.update({
             where: { id: taskId },
@@ -99,6 +127,7 @@ let TasksService = class TasksService {
 };
 exports.TasksService = TasksService;
 exports.TasksService = TasksService = __decorate([
-    (0, common_1.Injectable)()
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [prisma_service_js_1.PrismaService])
 ], TasksService);
 //# sourceMappingURL=tasks.service.js.map

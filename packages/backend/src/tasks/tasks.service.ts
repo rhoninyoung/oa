@@ -1,8 +1,6 @@
-import {
-  Injectable, NotFoundException, BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service.js';
-import { detectCycle, buildGraph, setDependency } from '@oa-mvp/shared';
+import { buildGraph, setDependency } from '@oa-mvp/shared';
 import type { Task } from '@oa-mvp/shared';
 
 @Injectable()
@@ -15,7 +13,23 @@ export class TasksService {
     return task;
   }
 
-  async insertRow(scheduleId: string, afterIndex: number, userId: string) {
+  async updateTask(taskId: string, data: Record<string, unknown>, _userId: string) {
+    const task = await this.prisma.task.findUnique({ where: { id: taskId } });
+    if (!task) throw new NotFoundException('Task not found');
+    return this.prisma.task.update({
+      where: { id: taskId },
+      data: {
+        name: (data.name as string) ?? task.name,
+        ownerId: (data.ownerId as string | null) ?? task.ownerId,
+        startDate: data.startDate ? new Date(data.startDate as string) : task.startDate,
+        endDate: data.endDate ? new Date(data.endDate as string) : task.endDate,
+        durationDays: (data.durationDays as number | null) ?? task.durationDays,
+        dependencyTaskId: (data.dependencyTaskId as string | null) ?? task.dependencyTaskId,
+      },
+    });
+  }
+
+  async insertRow(scheduleId: string, afterIndex: number, _userId: string) {
     // Renumber all tasks after `afterIndex`
     await this.prisma.task.updateMany({
       where: { scheduleId, orderIndex: { gt: afterIndex } },
@@ -26,7 +40,7 @@ export class TasksService {
     });
   }
 
-  async deleteRow(taskId: string, userId: string) {
+  async deleteRow(taskId: string, _userId: string) {
     const task = await this.prisma.task.findUnique({
       where: { id: taskId },
       include: { schedule: { select: { status: true } } },
@@ -48,16 +62,22 @@ export class TasksService {
     });
     for (let i = 0; i < remaining.length; i++) {
       if (remaining[i].orderIndex !== i + 1) {
-        await this.prisma.task.update({ where: { id: remaining[i].id }, data: { orderIndex: i + 1 } });
+        await this.prisma.task.update({
+          where: { id: remaining[i].id },
+          data: { orderIndex: i + 1 },
+        });
       }
     }
 
     return { deleted: true };
   }
 
-  async setDependency(taskId: string, depId: string | null, userId: string) {
+  async setDependency(taskId: string, depId: string | null, _userId: string) {
     const tasks = await this.prisma.task.findMany({
-      where: { scheduleId: (await this.prisma.task.findUnique({ where: { id: taskId } }))?.scheduleId ?? '' },
+      where: {
+        scheduleId:
+          (await this.prisma.task.findUnique({ where: { id: taskId } }))?.scheduleId ?? '',
+      },
     });
 
     const result = setDependency(taskId, depId, tasks as Task[]);

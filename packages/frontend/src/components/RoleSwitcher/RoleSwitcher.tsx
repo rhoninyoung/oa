@@ -14,10 +14,12 @@ export default function RoleSwitcher() {
       <select
         className="border rounded px-2 py-1"
         value={currentUser.id}
-        onChange={e => setUser(e.target.value)}
+        onChange={(e) => setUser(e.target.value)}
       >
-        {USERS.map(u => (
-          <option key={u.id} value={u.id}>{u.name}（{u.role}）</option>
+        {USERS.map((u) => (
+          <option key={u.id} value={u.id}>
+            {u.name}（{u.role}）
+          </option>
         ))}
       </select>
     </div>

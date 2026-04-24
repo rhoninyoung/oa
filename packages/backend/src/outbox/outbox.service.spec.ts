@@ -37,14 +37,20 @@ describe('OutboxService', () => {
     expect(mockPrisma.notificationOutbox.upsert).toHaveBeenCalledTimes(1);
     const [args] = mockPrisma.notificationOutbox.upsert.mock.calls[0];
     expect(args.where).toEqual({ idempotencyKey: 'SCHEDULE_SUBMITTED|s1|submit|2' });
-    expect(args.create).toMatchObject({ idempotencyKey: 'SCHEDULE_SUBMITTED|s1|submit|2', type: 'SCHEDULE_SUBMITTED' });
+    expect(args.create).toMatchObject({
+      idempotencyKey: 'SCHEDULE_SUBMITTED|s1|submit|2',
+      type: 'SCHEDULE_SUBMITTED',
+    });
     // payload is cast to any – just verify it's passed through
     expect((args.create as any).payload).toBe(payload);
   });
 
   // ── UT-OBX-04: emit upserts update payload with null dispatchedAt ───────────
   it('UT-OBX-04: emit upserts update resets dispatchedAt to null', async () => {
-    await svc.emit('SCHEDULE_SUBMITTED', { scheduleId: 's1', version: 1 } as Record<string, unknown>);
+    await svc.emit('SCHEDULE_SUBMITTED', { scheduleId: 's1', version: 1 } as Record<
+      string,
+      unknown
+    >);
     const [args] = mockPrisma.notificationOutbox.upsert.mock.calls[0];
     expect(args.update).toMatchObject({ dispatchedAt: null });
   });
@@ -68,7 +74,9 @@ describe('OutboxService', () => {
 
     await svc.dispatchAll();
 
-    expect(mockPrisma.notificationOutbox.findMany).toHaveBeenCalledWith({ where: { dispatchedAt: null } });
+    expect(mockPrisma.notificationOutbox.findMany).toHaveBeenCalledWith({
+      where: { dispatchedAt: null },
+    });
     expect(mockPrisma.notificationOutbox.update).toHaveBeenCalledWith({
       where: { id: 'entry-1' },
       data: { dispatchedAt: expect.any(Date) },

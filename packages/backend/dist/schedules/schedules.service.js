@@ -5,9 +5,14 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SchedulesService = void 0;
 const common_1 = require("@nestjs/common");
+const prisma_service_js_1 = require("../prisma.service.js");
+const outbox_service_js_1 = require("../outbox/outbox.service.js");
 const shared_1 = require("@oa-mvp/shared");
 let SchedulesService = class SchedulesService {
     prisma;
@@ -17,7 +22,7 @@ let SchedulesService = class SchedulesService {
         this.outbox = outbox;
     }
     // ── Read ─────────────────────────────────────────────────────────────────────
-    async findOne(scheduleId, userId) {
+    async findOne(scheduleId, _userId) {
         const schedule = await this.prisma.groupSchedule.findUnique({
             where: { id: scheduleId },
             include: { tasks: { orderBy: { orderIndex: 'asc' } } },
@@ -26,14 +31,14 @@ let SchedulesService = class SchedulesService {
             throw new common_1.NotFoundException('Schedule not found');
         return schedule;
     }
-    async findForIteration(iterationId, userId, userRole) {
+    async findForIteration(iterationId, _userId, _userRole) {
         return this.prisma.groupSchedule.findMany({
             where: { iterationId },
             include: { tasks: { orderBy: { orderIndex: 'asc' } } },
         });
     }
     // ── Draft auto-save with optimistic lock ────────────────────────────────────
-    async saveDraft(scheduleId, tasks, version, userId) {
+    async saveDraft(scheduleId, tasks, version, _userId) {
         const schedule = await this.prisma.groupSchedule.findUnique({ where: { id: scheduleId } });
         if (!schedule)
             throw new common_1.NotFoundException();
@@ -45,7 +50,7 @@ let SchedulesService = class SchedulesService {
         }
         // Delete existing tasks and recreate
         await this.prisma.task.deleteMany({ where: { scheduleId } });
-        const created = await Promise.all(tasks.map((t, i) => this.prisma.task.create({
+        await Promise.all(tasks.map((t, i) => this.prisma.task.create({
             data: {
                 id: t.id || undefined,
                 scheduleId,
@@ -77,8 +82,10 @@ let SchedulesService = class SchedulesService {
         ]);
         if (!schedule || !user)
             throw new common_1.NotFoundException();
-        const tasksNonEmpty = schedule.tasks.some(t => t.name.trim() !== '');
-        const result = (0, shared_1.canTransition)(schedule.status, 'REVIEWING', user.role, { tasksNonEmpty });
+        const tasksNonEmpty = schedule.tasks.some((t) => t.name.trim() !== '');
+        const result = (0, shared_1.canTransition)(schedule.status, 'REVIEWING', user.role, {
+            tasksNonEmpty,
+        });
         if (!result.ok)
             throw new common_1.BadRequestException({ code: result.code });
         const updated = await this.prisma.groupSchedule.update({
@@ -139,7 +146,9 @@ let SchedulesService = class SchedulesService {
         ]);
         if (!schedule || !user)
             throw new common_1.NotFoundException();
-        const result = (0, shared_1.canTransition)(schedule.status, 'REJECTED', user.role, { rejectReason: reason });
+        const result = (0, shared_1.canTransition)(schedule.status, 'REJECTED', user.role, {
+            rejectReason: reason,
+        });
         if (!result.ok)
             throw new common_1.ForbiddenException({ code: result.code });
         const updated = await this.prisma.groupSchedule.update({
@@ -178,6 +187,8 @@ let SchedulesService = class SchedulesService {
 };
 exports.SchedulesService = SchedulesService;
 exports.SchedulesService = SchedulesService = __decorate([
-    (0, common_1.Injectable)()
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [prisma_service_js_1.PrismaService,
+        outbox_service_js_1.OutboxService])
 ], SchedulesService);
 //# sourceMappingURL=schedules.service.js.map

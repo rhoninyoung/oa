@@ -10,13 +10,14 @@ exports.ProjectsModule = void 0;
 const common_1 = require("@nestjs/common");
 const projects_controller_js_1 = require("./projects.controller.js");
 const projects_service_js_1 = require("./projects.service.js");
+const prisma_service_js_1 = require("../prisma.service.js");
 let ProjectsModule = class ProjectsModule {
 };
 exports.ProjectsModule = ProjectsModule;
 exports.ProjectsModule = ProjectsModule = __decorate([
     (0, common_1.Module)({
         controllers: [projects_controller_js_1.ProjectsController],
-        providers: [projects_service_js_1.ProjectsService],
+        providers: [projects_service_js_1.ProjectsService, prisma_service_js_1.PrismaService],
         exports: [projects_service_js_1.ProjectsService],
     })
 ], ProjectsModule);

@@ -5,7 +5,8 @@ module.exports = {
   parserOptions: {
     ecmaVersion: 'latest',
     sourceType: 'module',
-    project: ['./tsconfig.base.json'],
+    tsconfigRootDir: __dirname,
+    project: ['./tsconfig.base.json', './packages/*/tsconfig.json'],
   },
   plugins: ['@typescript-eslint', 'prettier'],
   extends: [
@@ -19,5 +20,30 @@ module.exports = {
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/no-explicit-any': 'warn',
   },
+  overrides: [
+    {
+      files: ['**/*.test.ts', '**/*.spec.ts'],
+      rules: {
+        '@typescript-eslint/no-unsafe-call': 'off',
+        '@typescript-eslint/no-unsafe-member-access': 'off',
+        '@typescript-eslint/no-unsafe-assignment': 'off',
+        '@typescript-eslint/no-explicit-any': 'off',
+        '@typescript-eslint/no-unsafe-argument': 'off',
+        '@typescript-eslint/no-unsafe-return': 'off',
+        '@typescript-eslint/require-await': 'off',
+      },
+    },
+    {
+      files: ['packages/frontend/src/**/*.ts', 'packages/frontend/src/**/*.tsx'],
+      rules: {
+        '@typescript-eslint/no-unsafe-member-access': 'off',
+        '@typescript-eslint/no-unsafe-assignment': 'off',
+        '@typescript-eslint/no-unsafe-call': 'off',
+        '@typescript-eslint/no-unsafe-argument': 'off',
+        '@typescript-eslint/no-unsafe-return': 'off',
+        '@typescript-eslint/no-misused-promises': 'warn',
+      },
+    },
+  ],
   ignorePatterns: ['dist/', 'node_modules/', 'coverage/'],
 };

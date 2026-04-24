@@ -1,5 +1,4 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useUserStore } from './stores/userStore.js';
 import Layout from './components/Layout/Layout.jsx';
 import ProjectsPage from './pages/ProjectsPage.jsx';
 import IterationDetailPage from './pages/IterationDetailPage.jsx';

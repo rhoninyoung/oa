@@ -1,4 +1,4 @@
-import type { ScheduleStatus, Role, TransitionResult, TransitionError, TransitionErrorCode } from './types.js';
+import type { ScheduleStatus, Role, TransitionResult, TransitionError } from './types.js';
 
 interface TransitionCtx {
   tasksNonEmpty?: boolean;

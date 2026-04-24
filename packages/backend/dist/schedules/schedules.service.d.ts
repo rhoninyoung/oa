@@ -5,69 +5,69 @@ export declare class SchedulesService {
     private prisma;
     private outbox;
     constructor(prisma: PrismaService, outbox: OutboxService);
-    findOne(scheduleId: string, userId: string): Promise<{
+    findOne(scheduleId: string, _userId: string): Promise<{
         tasks: {
             id: string;
-            source: import("@prisma/client").$Enums.TaskSource;
-            orderIndex: number;
             name: string;
-            scheduleId: string;
-            ownerId: string | null;
             startDate: Date | null;
             endDate: Date | null;
+            scheduleId: string;
+            orderIndex: number;
+            ownerId: string | null;
             durationDays: number | null;
             dependencyTaskId: string | null;
+            source: import("@prisma/client").$Enums.TaskSource;
         }[];
     } & {
         id: string;
-        iterationId: string;
         groupId: string;
+        iterationId: string;
         status: import("@prisma/client").$Enums.ScheduleStatus;
         version: number;
         rejectReason: string | null;
         createdAt: Date;
         updatedAt: Date;
     }>;
-    findForIteration(iterationId: string, userId: string, userRole: Role): Promise<({
+    findForIteration(iterationId: string, _userId: string, _userRole: Role): Promise<({
         tasks: {
             id: string;
-            source: import("@prisma/client").$Enums.TaskSource;
-            orderIndex: number;
             name: string;
-            scheduleId: string;
-            ownerId: string | null;
             startDate: Date | null;
             endDate: Date | null;
+            scheduleId: string;
+            orderIndex: number;
+            ownerId: string | null;
             durationDays: number | null;
             dependencyTaskId: string | null;
+            source: import("@prisma/client").$Enums.TaskSource;
         }[];
     } & {
         id: string;
-        iterationId: string;
         groupId: string;
+        iterationId: string;
         status: import("@prisma/client").$Enums.ScheduleStatus;
         version: number;
         rejectReason: string | null;
         createdAt: Date;
         updatedAt: Date;
     })[]>;
-    saveDraft(scheduleId: string, tasks: unknown[], version: number, userId: string): Promise<{
+    saveDraft(scheduleId: string, tasks: unknown[], version: number, _userId: string): Promise<{
         newVersion: number;
         tasks: {
             id: string;
-            source: import("@prisma/client").$Enums.TaskSource;
-            orderIndex: number;
             name: string;
-            scheduleId: string;
-            ownerId: string | null;
             startDate: Date | null;
             endDate: Date | null;
+            scheduleId: string;
+            orderIndex: number;
+            ownerId: string | null;
             durationDays: number | null;
             dependencyTaskId: string | null;
+            source: import("@prisma/client").$Enums.TaskSource;
         }[];
         id: string;
-        iterationId: string;
         groupId: string;
+        iterationId: string;
         status: import("@prisma/client").$Enums.ScheduleStatus;
         version: number;
         rejectReason: string | null;
@@ -77,8 +77,8 @@ export declare class SchedulesService {
     private getUser;
     submit(scheduleId: string, userId: string): Promise<{
         id: string;
-        iterationId: string;
         groupId: string;
+        iterationId: string;
         status: import("@prisma/client").$Enums.ScheduleStatus;
         version: number;
         rejectReason: string | null;
@@ -87,8 +87,8 @@ export declare class SchedulesService {
     }>;
     withdraw(scheduleId: string, userId: string): Promise<{
         id: string;
-        iterationId: string;
         groupId: string;
+        iterationId: string;
         status: import("@prisma/client").$Enums.ScheduleStatus;
         version: number;
         rejectReason: string | null;
@@ -97,8 +97,8 @@ export declare class SchedulesService {
     }>;
     approve(scheduleId: string, userId: string): Promise<{
         id: string;
-        iterationId: string;
         groupId: string;
+        iterationId: string;
         status: import("@prisma/client").$Enums.ScheduleStatus;
         version: number;
         rejectReason: string | null;
@@ -107,8 +107,8 @@ export declare class SchedulesService {
     }>;
     reject(scheduleId: string, userId: string, reason: string): Promise<{
         id: string;
-        iterationId: string;
         groupId: string;
+        iterationId: string;
         status: import("@prisma/client").$Enums.ScheduleStatus;
         version: number;
         rejectReason: string | null;
@@ -117,8 +117,8 @@ export declare class SchedulesService {
     }>;
     reschedule(scheduleId: string, userId: string): Promise<{
         id: string;
-        iterationId: string;
         groupId: string;
+        iterationId: string;
         status: import("@prisma/client").$Enums.ScheduleStatus;
         version: number;
         rejectReason: string | null;

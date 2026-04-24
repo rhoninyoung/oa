@@ -15,11 +15,11 @@ describe('AppModule', () => {
     await module.close();
   });
 
-  it('should bootstrap the application', async () => {
+  it('should bootstrap the application', () => {
     expect(module).toBeDefined();
   });
 
-  it('should provide PrismaService as injectable', async () => {
+  it('should provide PrismaService as injectable', () => {
     const prismaService = module.get<PrismaService>(PrismaService);
     expect(prismaService).toBeInstanceOf(PrismaService);
   });

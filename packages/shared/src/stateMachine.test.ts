@@ -1,5 +1,5 @@
 import { canTransition } from './stateMachine.js';
-import type { ScheduleStatus, Role } from './types.js';
+import type {} from './types.js';
 
 describe('canTransition', () => {
   // ── DT-SM-01: PENDING → REVIEWING by GL, tasks non-empty → allowed ──────────

@@ -13,18 +13,18 @@ describe('AppModule', () => {
     afterEach(async () => {
         await module.close();
     });
-    it('should bootstrap the application', async () => {
+    it('should bootstrap the application', () => {
         expect(module).toBeDefined();
     });
-    it('should provide PrismaService as injectable', async () => {
+    it('should provide PrismaService as injectable', () => {
         const prismaService = module.get(prisma_service_js_1.PrismaService);
         expect(prismaService).toBeInstanceOf(prisma_service_js_1.PrismaService);
     });
     it('should connect to the database on init', async () => {
         const prismaService = module.get(prisma_service_js_1.PrismaService);
         await prismaService.onModuleInit();
-        const isConnected = prismaService.$isConnected;
-        expect(isConnected).toBe(true);
+        // PrismaClient has no $isConnected; verify $connect resolves without error
+        await expect(prismaService.$connect()).resolves.toBeUndefined();
     });
 });
 //# sourceMappingURL=app.test.js.map

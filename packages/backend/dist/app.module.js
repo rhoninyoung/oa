@@ -14,6 +14,7 @@ const tasks_module_js_1 = require("./tasks/tasks.module.js");
 const master_module_js_1 = require("./master/master.module.js");
 const outbox_module_js_1 = require("./outbox/outbox.module.js");
 const exports_module_js_1 = require("./exports/exports.module.js");
+const iterations_module_js_1 = require("./iterations/iterations.module.js");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -26,6 +27,7 @@ exports.AppModule = AppModule = __decorate([
             master_module_js_1.MasterModule,
             outbox_module_js_1.OutboxModule,
             exports_module_js_1.ExportsModule,
+            iterations_module_js_1.IterationsModule,
         ],
     })
 ], AppModule);

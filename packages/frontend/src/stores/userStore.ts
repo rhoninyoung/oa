@@ -20,7 +20,7 @@ export const useUserStore = create<{
 }>((set) => ({
   currentUser: DEMO_USERS[0],
   setUser: (userId) => {
-    const u = DEMO_USERS.find(u => u.id === userId);
+    const u = DEMO_USERS.find((u) => u.id === userId);
     if (u) set({ currentUser: u });
   },
 }));

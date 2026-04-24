@@ -2,34 +2,33 @@ import { MasterService } from './master.service.js';
 export declare class MasterController {
     private readonly svc;
     constructor(svc: MasterService);
-    private getUserId;
-    getMasterView(id: string, headers: Headers): Promise<{
+    getMasterView(id: string, userId: string): Promise<{
         id: string;
-        source: import("@prisma/client").$Enums.TaskSource;
-        orderIndex: number;
         name: string;
-        scheduleId: string;
-        ownerId: string | null;
         startDate: Date | null;
         endDate: Date | null;
+        scheduleId: string;
+        orderIndex: number;
+        ownerId: string | null;
         durationDays: number | null;
         dependencyTaskId: string | null;
+        source: import("@prisma/client").$Enums.TaskSource;
     }[]>;
     addRow(id: string, body: {
         ownerId: string;
-    }, headers: Headers): Promise<{
+    }, userId: string): Promise<{
         id: string;
-        source: import("@prisma/client").$Enums.TaskSource;
-        orderIndex: number;
         name: string;
-        scheduleId: string;
-        ownerId: string | null;
         startDate: Date | null;
         endDate: Date | null;
+        scheduleId: string;
+        orderIndex: number;
+        ownerId: string | null;
         durationDays: number | null;
         dependencyTaskId: string | null;
+        source: import("@prisma/client").$Enums.TaskSource;
     }>;
-    deleteRow(id: string, headers: Headers): Promise<{
+    deleteRow(id: string, userId: string): Promise<{
         deleted: boolean;
     }>;
 }

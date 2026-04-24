@@ -5,31 +5,43 @@ export declare class TasksService {
     findOne(taskId: string): Promise<{
         id: string;
         name: string;
+        startDate: Date | null;
+        endDate: Date | null;
         scheduleId: string;
         orderIndex: number;
         ownerId: string | null;
-        startDate: Date | null;
-        endDate: Date | null;
         durationDays: number | null;
         dependencyTaskId: string | null;
         source: import("@prisma/client").$Enums.TaskSource;
     }>;
-    insertRow(scheduleId: string, afterIndex: number, userId: string): Promise<{
+    updateTask(taskId: string, data: Record<string, unknown>, _userId: string): Promise<{
         id: string;
         name: string;
+        startDate: Date | null;
+        endDate: Date | null;
         scheduleId: string;
         orderIndex: number;
         ownerId: string | null;
-        startDate: Date | null;
-        endDate: Date | null;
         durationDays: number | null;
         dependencyTaskId: string | null;
         source: import("@prisma/client").$Enums.TaskSource;
     }>;
-    deleteRow(taskId: string, userId: string): Promise<{
+    insertRow(scheduleId: string, afterIndex: number, _userId: string): Promise<{
+        id: string;
+        name: string;
+        startDate: Date | null;
+        endDate: Date | null;
+        scheduleId: string;
+        orderIndex: number;
+        ownerId: string | null;
+        durationDays: number | null;
+        dependencyTaskId: string | null;
+        source: import("@prisma/client").$Enums.TaskSource;
+    }>;
+    deleteRow(taskId: string, _userId: string): Promise<{
         deleted: boolean;
     }>;
-    setDependency(taskId: string, depId: string | null, userId: string): Promise<{
+    setDependency(taskId: string, depId: string | null, _userId: string): Promise<{
         ok: boolean;
     }>;
     propagateFinishChange(taskId: string): Promise<{
