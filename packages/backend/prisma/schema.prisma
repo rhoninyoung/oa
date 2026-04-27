@@ -1,0 +1,121 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id      String  @id @default(cuid())
+  name    String
+  role    Role
+  groupId String?
+  group   Group?  @relation(fields: [groupId], references: [id])
+
+  @@map("users")
+}
+
+model Group {
+  id      String @id @default(cuid())
+  name    String
+  members User[]
+
+  @@map("groups")
+}
+
+model Project {
+  id         String      @id @default(cuid())
+  name       String
+  iterations Iteration[]
+
+  @@map("projects")
+}
+
+model Iteration {
+  id         String          @id @default(cuid())
+  projectId  String
+  project    Project         @relation(fields: [projectId], references: [id])
+  name       String
+  startDate  DateTime
+  endDate    DateTime
+  schedules  GroupSchedule[]
+
+  @@map("iterations")
+}
+
+model GroupSchedule {
+  id           String          @id @default(cuid())
+  iterationId  String
+  iteration    Iteration       @relation(fields: [iterationId], references: [id])
+  groupId      String
+  status       ScheduleStatus  @default(PENDING)
+  version      Int             @default(1)
+  rejectReason String?
+  tasks        Task[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@unique([iterationId, groupId])
+  @@map("group_schedules")
+}
+
+model Task {
+  id               String    @id @default(cuid())
+  scheduleId       String
+  schedule         GroupSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  orderIndex       Int
+  name             String
+  ownerId          String?
+  startDate        DateTime?
+  endDate          DateTime?
+  durationDays     Int?
+  dependencyTaskId String?
+  source           TaskSource @default(GROUP)
+  note             String?
+
+  @@map("tasks")
+}
+
+model ApprovalRecord {
+  id          String   @id @default(cuid())
+  scheduleId  String
+  reviewerId  String
+  action      String
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  @@map("approval_records")
+}
+
+model NotificationOutbox {
+  id             String    @id @default(cuid())
+  idempotencyKey String    @unique
+  type           String
+  payload        Json
+  dispatchedAt   DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@map("notification_outbox")
+}
+
+enum Role {
+  GROUP_LEADER
+  PROJECT_MANAGER
+}
+
+enum ScheduleStatus {
+  PENDING
+  REVIEWING
+  APPROVED
+  REJECTED
+}
+
+enum TaskSource {
+  GROUP
+  MASTER
+}
