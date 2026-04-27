@@ -8,6 +8,11 @@ export function renderProjectTree(container) {
   const activeGroupId = state.activeGroupId;
   const viewMode = state.viewMode;
 
+  // Pre-build schedule → {groupId, iterationId} map: O(schedules)
+  const scheduleInfo = new Map(
+    schedules.map(s => [s.id, { groupId: s.groupId, iterationId: s.iterationId }])
+  );
+
   let html = '';
 
   for (const proj of projects) {
@@ -16,27 +21,31 @@ export function renderProjectTree(container) {
 
     for (const iter of projIters) {
       const scheds = schedules.filter(s => s.iterationId === iter.id);
+      const iterHeaderActive = iter.id === activeIterId && viewMode === 'GROUP';
       const iterSchedules = scheds.map(sch => {
         const grp = groups.find(g => g.id === sch.groupId);
-        const iterTasks = tasks.filter(t => {
-          const sch2 = schedules.find(s => s.id === t.scheduleId);
-          return sch2?.groupId === sch.groupId && sch2?.iterationId === iter.id;
-        });
+        // O(1) lookup per task via Map instead of O(n) find inside filter
+        const taskCount = tasks.filter(t => {
+          const info = scheduleInfo.get(t.scheduleId);
+          return info?.groupId === sch.groupId && info?.iterationId === iter.id;
+        }).length;
         const status = sch.status;
-        const taskCount = iterTasks.length;
         const isActive = iter.id === activeIterId && viewMode === 'GROUP' && sch.groupId === activeGroupId;
         return `
           <div class="iteration-item ${isActive ? 'active' : ''}"
                data-iter-id="${iter.id}"
                data-group-id="${sch.groupId}">
-            <span>${grp?.name ?? ''}</span>
+            <span class="iter-group-name">${grp?.name ?? ''}</span>
             <span class="status-badge status-${status}">${statusLabel(status)}</span>
-            <span class="group-summary">${taskCount} 任务</span>
+            <span class="group-summary">${taskCount}</span>
           </div>`;
       }).join('');
 
-      const iterActive = iter.id === activeIterId && viewMode === 'GROUP';
-      html += `<div class="iterations">${iterSchedules}</div>`;
+      html += `
+        <div class="iteration-block ${iterHeaderActive ? 'iter-header-active' : ''}">
+          <div class="iteration-name">${iter.name}</div>
+          <div class="iterations">${iterSchedules}</div>
+        </div>`;
     }
   }
 
@@ -52,7 +61,7 @@ export function renderProjectTree(container) {
   // Attach click events
   container.querySelectorAll('.iteration-item').forEach(el => {
     el.addEventListener('click', () => {
-      setState({
+          setState({
         ...getState(),
         activeIterationId: el.dataset.iterId,
         activeGroupId: el.dataset.groupId,
@@ -64,7 +73,7 @@ export function renderProjectTree(container) {
   const masterEl = container.querySelector('#master-toggle');
   if (masterEl) {
     masterEl.addEventListener('click', () => {
-      setState({ ...getState(), viewMode: 'MASTER' });
+          setState({ ...getState(), viewMode: 'MASTER' });
     });
   }
 }

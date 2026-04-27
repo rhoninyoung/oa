@@ -1,17 +1,16 @@
 // src/hooks/autoSave.js
-// 30s 防抖自动保存 hook
+// 30s 防抖自动保存 hook — 只写 localStorage，不调 setState，不打扰用户编辑
 
-import { getState, setState } from '../store.js';
-import { addLogEntry } from '../components/activityLog.js';
+import { getState } from '../store.js';
 
 const DEBOUNCE_MS = 30_000; // 30 seconds
 
 let _timer = null;
-let _lastSavedState = null;
+let _lastSavedVersion = -1; // -1 = never saved
 
 /**
  * 启动/重启 30s 自动保存计时器
- * @param {()=>void} onSave  保存完成回调
+ * @param {()=>void} onSave  保存完成回调（可选，用于 Ctrl+S 手动保存）
  */
 export function scheduleAutoSave(onSave) {
   cancelAutoSave();
@@ -29,14 +28,13 @@ export function cancelAutoSave() {
 
 function triggerSave(onSave) {
   const state = getState();
-  // Only save if state actually changed
-  const serialized = JSON.stringify(state);
-  if (serialized === _lastSavedState) return;
-  _lastSavedState = serialized;
+  // Version check is O(1) — skip serialisation when nothing changed since last save
+  if (state._version === _lastSavedVersion) return;
+  _lastSavedVersion = state._version;
 
   try {
+    const serialized = JSON.stringify(state);
     localStorage.setItem('oa.state.v1', serialized);
-    addLogEntry('DRAFT_SAVED', 'system', '自动保存草稿');
     if (onSave) onSave();
   } catch (e) {
     console.error('[autoSave] failed:', e);
@@ -44,16 +42,3 @@ function triggerSave(onSave) {
   _timer = null;
 }
 
-/**
- * 检查距上次保存是否已超过 30s
- */
-export function saveIfStale() {
-  const now = Date.now();
-  const state = getState();
-  const lastSaved = state._lastAutoSaveAt ?? 0;
-  if (now - lastSaved >= DEBOUNCE_MS) {
-    triggerSave(() => {
-      setState({ ...getState(), _lastAutoSaveAt: Date.now() });
-    });
-  }
-}

@@ -9,7 +9,9 @@ const _subscribers = new Set();
  * @param {object} state
  */
 export function setState(state) {
-  _state = state;
+  // Increment version counter so autoSave can skip serialisation when nothing changed
+  _state._version = ((_state._version ?? 0) + 1);
+  Object.assign(_state, state);
   _persist();
   _subscribers.forEach(fn => fn(_state));
 }
@@ -49,6 +51,7 @@ function _load() {
 
 function _createEmpty() {
   return {
+    _version: 0,
     users: [],
     groups: [],
     projects: [],
@@ -77,6 +80,7 @@ export function exportState() {
 export function importState(json) {
   try {
     const parsed = JSON.parse(json);
+    parsed._version = ((_state?._version ?? 0) + 1);
     _state = parsed;
     _persist();
     _subscribers.forEach(fn => fn(_state));

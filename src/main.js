@@ -4,7 +4,7 @@ import { buildSeed } from './seed.js';
 import { downloadJSON, pickJSONFile } from './io/importExport.js';
 import { renderRoleSwitcher } from './components/roleSwitcher.js';
 import { renderProjectTree } from './components/projectTree.js';
-import { renderWBSTable, initTableKeyboard } from './components/wbsTable.js';
+import { renderWBSTable, initTableKeyboard, isCellEditing } from './components/wbsTable.js';
 import { renderActivityLog } from './components/activityLog.js';
 import { scheduleAutoSave } from './hooks/autoSave.js';
 
@@ -24,23 +24,34 @@ function init() {
 // ─── Full re-render ─────────────────────────────────────────────────────────
 
 function render() {
-  const state = getState();
+  try {
+    const state = getState();
+    const editing = isCellEditing();
 
-  // Header
-  renderRoleSwitcher(document.getElementById('role-switcher'));
+    if (editing) {
+      renderRoleSwitcher(document.getElementById('role-switcher'));
+      renderProjectTree(document.getElementById('project-tree'));
+      // Skip ActivityLog during editing — it changes infrequently and would cause
+      // unnecessary re-renders while the user is interacting with a cell
+      return;
+    }
 
-  // Sidebar
-  renderProjectTree(document.getElementById('project-tree'));
+    renderRoleSwitcher(document.getElementById('role-switcher'));
+    renderProjectTree(document.getElementById('project-tree'));
 
-  // Main area
-  if (state.viewMode === 'MASTER') {
-    renderMasterView();
-  } else {
-    renderGroupView();
+    if (state.viewMode === 'MASTER') {
+      renderMasterView();
+    } else {
+      renderGroupView();
+    }
+
+    renderActivityLog(document.getElementById('activity-log-list'));
+  } catch (e) {
+    console.error('[render]', e);
+    import('./components/toast.js').then(({ showToast }) => {
+      showToast('页面渲染异常：' + e.message, 'error');
+    });
   }
-
-  // Activity log
-  renderActivityLog(document.getElementById('activity-log-list'));
 }
 
 // ─── Group view (WBS table + approval panel) ────────────────────────────────
@@ -72,6 +83,9 @@ function renderGroupView() {
   // WBS table
   document.getElementById('approval-panel').className =
     sched?.status === 'REVIEWING' ? 'visible' : '';
+
+  document.getElementById('group-view-wrapper').classList.remove('hidden');
+  document.getElementById('master-view-wrapper').classList.add('hidden');
   renderWBSTable(sched, schedTasks);
 }
 
@@ -137,6 +151,9 @@ function renderMasterView() {
   `;
 
   document.getElementById('approval-panel').className = '';
+
+  document.getElementById('group-view-wrapper').classList.add('hidden');
+  document.getElementById('master-view-wrapper').classList.remove('hidden');
   renderMasterTable(approvedTasks);
 
   document.getElementById('btn-add-master-row')?.addEventListener('click', handleMasterAddRow);
@@ -168,10 +185,11 @@ function renderMasterTable(tasks) {
       </tr>`;
   }).join('');
 
-  const wrapper = document.getElementById('wbs-table-wrapper');
+  // Write into master-view-wrapper — never touches wbs-table (which belongs to group view)
+  const wrapper = document.getElementById('master-view-wrapper');
   wrapper.innerHTML = `
-    <table id="wbs-table">
-      <thead id="wbs-thead">
+    <table id="master-table">
+      <thead>
         <tr>
           <th>#</th><th>任务名</th><th>负责人</th><th>开始</th><th>结束</th>
           <th>天数</th><th>来源</th><th>备注</th><th>操作</th>
@@ -190,6 +208,10 @@ function renderMasterTable(tasks) {
 import { canTransition, nextStatus } from './domain/stateMachine.js';
 import { addLogEntry } from './components/activityLog.js';
 import { showToast } from './components/toast.js';
+
+function statusLabel(s) {
+  return { PENDING: '草稿', REVIEWING: '待审', APPROVED: '已批', REJECTED: '已拒' }[s ?? ''] ?? s ?? '';
+}
 
 function handleSubmit() {
   const state = getState();

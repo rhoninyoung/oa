@@ -102,8 +102,17 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .project-tree-item .iterations { padding-left: 14px; }
 .iteration-item { padding: 4px 10px; cursor: pointer; font-size: 13px; }
 .iteration-item:hover { background: var(--bg); }
-.iteration-item.active { background: #dbeafe; color: var(--primary); }
+.iteration-item.active { background: #dbeafe; color: var(--primary); border-left: 3px solid var(--primary); padding-left: 7px; }
 .iteration-item .group-summary { font-size: 11px; color: var(--text-muted); margin-left: 6px; }
+.iteration-block { margin-bottom: 2px; }
+.iteration-name {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 5px 12px 2px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.iteration-block.iter-header-active > .iteration-name { color: var(--primary); }
 .status-badge {
   display: inline-block;
   padding: 1px 6px;
@@ -160,7 +169,13 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .reason-hint { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
 /* ─── WBS Table ──────────────────────────────────────────── */
-#wbs-table-wrapper {
+#group-view-wrapper {
+  flex: 1;
+  overflow: auto;
+  background: var(--surface);
+}
+
+#master-view-wrapper {
   flex: 1;
   overflow: auto;
   background: var(--surface);
@@ -215,7 +230,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   width: 4px;
   background: transparent;
 }
-#wbs-table-wrapper::after {
+#group-view-wrapper::after, #master-view-wrapper::after {
   content: '';
   position: sticky;
   right: 0;

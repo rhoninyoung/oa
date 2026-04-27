@@ -58,4 +58,23 @@ describe('canDeleteRow', () => {
       assert.strictEqual(canDeleteRow({ source: 'GROUP' }, { status: s }).code, 'SYNC_ROW_READONLY', s);
     }
   });
+  // DT-PERM-05: null task → UNKNOWN_SOURCE
+  it('canDeleteRow: task is null → UNKNOWN_SOURCE', () => {
+    assert.strictEqual(canDeleteRow(null, { status: 'PENDING' }).code, 'UNKNOWN_SOURCE');
+  });
+});
+
+describe('permit: deleteRow action', () => {
+  // DT-PERM-06: GL on own group + deleteRow → MASTER_ONLY
+  it('GL: deleteRow → MASTER_ONLY (not allowed)', () => {
+    assert.strictEqual(permit('GROUP_LEADER', 'u1', ownSchedule, glUser, 'deleteRow').code, 'MASTER_ONLY');
+  });
+  // DT-PERM-07: PM + deleteRow → allowed (source-level check is in canDeleteRow)
+  it('PM: deleteRow → allowed', () => {
+    assert.deepStrictEqual(permit('PROJECT_MANAGER', 'pm1', ownSchedule, pmUser, 'deleteRow'), { ok: true });
+  });
+  // DT-PERM-08: GL + reschedule → ACTOR_NOT_PM
+  it('GL: reschedule → ACTOR_NOT_PM', () => {
+    assert.strictEqual(permit('GROUP_LEADER', 'u1', ownSchedule, glUser, 'reschedule').code, 'ACTOR_NOT_PM');
+  });
 });

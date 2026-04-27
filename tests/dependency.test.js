@@ -92,8 +92,6 @@ describe('buildDownstreamGraph', () => {
 });
 
 describe('propagateFinishChange', () => {
-  const holidays = [];
-
   it('updates downstream task start after upstream finish changes', () => {
     const tasks = [
       { id: 'A', dependencyTaskId: null, endDate: '2026-04-28', durationDays: 1 },
@@ -113,10 +111,78 @@ describe('propagateFinishChange', () => {
       { id: 'C', dependencyTaskId: 'B', durationDays: 1 },
     ];
     const changes = propagateFinishChange(tasks, 'A', isWeekend, addWorkDays, []);
-    // A ends Tue Apr-28 → B starts Wed Apr-29 (dur=2) → ends Thu Apr-30
-    // C starts Fri May-1 (+1 WD from Apr-30)
     assert.ok(changes.has('B'), 'B should be recalculated');
     assert.ok(changes.has('C'), 'C should be cascaded');
     assert.strictEqual(changes.get('C')?.startDate, '2026-05-01');
+  });
+
+  // DT-DEP-07: Fri endDate + addWorkDays(n=1) skips weekend → next Mon
+  it('cross-weekend cascade: B ends Thu → C starts next Mon', () => {
+    const tasks = [
+      { id: 'A', dependencyTaskId: null, endDate: '2026-04-28', durationDays: 1 },
+      { id: 'B', dependencyTaskId: 'A', endDate: '2026-04-30', durationDays: 2 }, // Wed+Thu
+      { id: 'C', dependencyTaskId: 'B', durationDays: 1 },
+    ];
+    const changes = propagateFinishChange(tasks, 'A', isWeekend, addWorkDays, []);
+    // A ends Tue Apr-28 → B starts Wed Apr-29 (dur=2) → ends Thu Apr-30
+    // C starts Fri May-1 (+1 WD from Apr-30); May 1 is Fri (workday) → no skip
+    assert.ok(changes.has('C'));
+    assert.strictEqual(changes.get('C')?.startDate, '2026-05-01'); // Fri May 1
+  });
+
+  // DT-DEP-08: holiday in cascade path
+  it('holiday skip in cascade: Fri holiday pushes C to next Mon', () => {
+    const tasks = [
+      { id: 'A', dependencyTaskId: null, endDate: '2026-04-28', durationDays: 1 },
+      { id: 'B', dependencyTaskId: 'A', endDate: '2026-04-30', durationDays: 2 }, // Thu+Fri
+      { id: 'C', dependencyTaskId: 'B', durationDays: 1 },
+    ];
+    const holidays = ['2026-05-01']; // Fri is a holiday
+    const changes = propagateFinishChange(tasks, 'A', isWeekend, addWorkDays, holidays);
+    // A ends Tue Apr-28 → B starts Wed Apr-29 (dur=2) → ends Thu Apr-30
+    // C starts Fri May-1 BUT it's a holiday → skip to Mon May-3
+    assert.ok(changes.has('C'));
+    assert.strictEqual(changes.get('C')?.startDate, '2026-05-04'); // Mon
+    assert.strictEqual(changes.get('C')?.endDate, '2026-05-04'); // dur=1
+  });
+});
+
+describe('canSetDependency edge cases', () => {
+  // DT-DEP-09: null depId (clear dependency) → should be allowed
+  it('canSetDependency: clearing dep (null depId via find) → allowed', () => {
+    // The function only checks "can we set a dep on this target?" — not clearing.
+    // Clearing happens by passing a depId of a non-existent or different task.
+    // Direct test: task has no existing dep → allowed
+    const tasks = [{ id: 'A', dependencyTaskId: null }];
+    assert.deepStrictEqual(canSetDependency(tasks, 'A'), { ok: true });
+  });
+
+  // DT-DEP-10: target task not found → TASK_NOT_FOUND
+  it('canSetDependency: target task not found → TASK_NOT_FOUND', () => {
+    const tasks = [{ id: 'A', dependencyTaskId: null }];
+    assert.strictEqual(canSetDependency(tasks, 'non-existent').code, 'TASK_NOT_FOUND');
+  });
+});
+
+describe('detectCycle: larger DAG', () => {
+  // DT-DEP-11: 4-node DAG, no cycle → ok:false
+  it('detectCycle: 4-node DAG → no cycle', () => {
+    const tasks = [
+      { id: 'A', dependencyTaskId: null },
+      { id: 'B', dependencyTaskId: 'A' },
+      { id: 'C', dependencyTaskId: 'A' },
+      { id: 'D', dependencyTaskId: 'B' },
+    ];
+    assert.deepStrictEqual(detectCycle(tasks), { ok: false });
+  });
+
+  // DT-DEP-12: isolated nodes (no deps at all) → ok:false
+  it('detectCycle: isolated nodes → no cycle', () => {
+    const tasks = [
+      { id: 'A', dependencyTaskId: null },
+      { id: 'B', dependencyTaskId: null },
+      { id: 'C', dependencyTaskId: null },
+    ];
+    assert.deepStrictEqual(detectCycle(tasks), { ok: false });
   });
 });

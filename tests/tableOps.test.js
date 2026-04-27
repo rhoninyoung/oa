@@ -70,5 +70,27 @@ it('tsvToCells roundtrip: "A\tB\\nC\tD" → same array', () => {
 it('tsvToCells: quoted field with embedded quote', () => {
   const cells = [['a"b']];
   const tsv = cellsToTSV(cells);
+  assert.strictEqual(tsv, '"a""b"'); // RFC 4180: embedded " → ""
   assert.deepStrictEqual(tsvToCells(tsv), cells);
+});
+
+// DT-TBL-09: popUndo on empty history → state:null, does not throw
+it('popUndo: empty history → state null, no throw', () => {
+  const { state, canUndo, canRedo } = popUndo({ past: [], future: [] });
+  assert.strictEqual(state, null);
+  assert.strictEqual(canUndo, false);
+  assert.strictEqual(canRedo, false);
+});
+
+// DT-TBL-10: mapPaste overflowCols (src wider than target)
+it('mapPaste: 3x3 into 2x2 → overflowCols=1', () => {
+  const src = [['a', 'b', 'c'], ['d', 'e', 'f'], ['g', 'h', 'i']];
+  const r = mapPaste(src, 2, 2);
+  assert.strictEqual(r.overflowCols, 1);
+  assert.strictEqual(r.overflowRows, 1);
+  // target is 2x2, only top-left 2x2 of src is used
+  assert.strictEqual(r.cells[0][0], 'a');
+  assert.strictEqual(r.cells[0][1], 'b');
+  assert.strictEqual(r.cells[1][0], 'd');
+  assert.strictEqual(r.cells[1][1], 'e');
 });

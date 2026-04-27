@@ -30,12 +30,15 @@
     <main id="main-content">
       <div id="schedule-header"></div>
       <div id="approval-panel"></div>
-      <div id="wbs-table-wrapper">
+      <!-- Group view: WBS table (always keeps wbs-tbody stable) -->
+      <div id="group-view-wrapper">
         <table id="wbs-table">
           <thead id="wbs-thead"></thead>
           <tbody id="wbs-tbody"></tbody>
         </table>
       </div>
+      <!-- Master view: separate container, never touches wbs-table -->
+      <div id="master-view-wrapper" class="hidden"></div>
     </main>
 
     <!-- 右栏：活动日志 -->

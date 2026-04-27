@@ -16,12 +16,16 @@ describe('isWeekend', () => {
 describe('isHoliday', () => {
   it('holiday in list → true', () => { assert.strictEqual(isHoliday('2026-05-01', ['2026-05-01']), true); });
   it('not in list → false', () => { assert.strictEqual(isHoliday('2026-04-27', ['2026-05-01']), false); });
+  // DT-CAL-06: empty holiday list → always false
+  it('empty holiday list → false', () => { assert.strictEqual(isHoliday('2026-05-01', []), false); });
 });
 
 describe('isWorkDay', () => {
   it('Mon + no holiday → true', () => { assert.strictEqual(isWorkDay('2026-04-27', []), true); });
   it('Sat + no holiday → false', () => { assert.strictEqual(isWorkDay('2026-04-25', []), false); });
   it('Mon + holiday → false', () => { assert.strictEqual(isWorkDay('2026-05-01', ['2026-05-01']), false); });
+  // DT-CAL-07: Mon + empty holiday list → true
+  it('Mon + empty holiday list → true', () => { assert.strictEqual(isWorkDay('2026-04-27', []), true); });
 });
 
 // DT-CAL-01: addWorkDays(Mon, 1) = Tue
@@ -42,6 +46,16 @@ it('addWorkDays: Fri + 3 = next Wed', () => {
 // DT-CAL-04: holiday skips correctly
 it('addWorkDays: Thu + 2 with Fri holiday = Tue next week', () => {
   assert.strictEqual(addWorkDays('2026-04-30', 2, ['2026-05-01']), '2026-05-05');
+});
+
+// DT-CAL-08: days=0 → returns same date
+it('addWorkDays: 0 days → same date', () => {
+  assert.strictEqual(addWorkDays('2026-04-27', 0, []), '2026-04-27');
+});
+
+// DT-CAL-09: negative days → throws
+it('addWorkDays: negative days → throws', () => {
+  assert.throws(() => addWorkDays('2026-04-27', -1, []), /n must be non-negative/);
 });
 
 // DT-CAL-05: duration=0 → same day

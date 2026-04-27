@@ -89,6 +89,20 @@ describe('canTransition', () => {
     assert.strictEqual(r.ok, false);
     assert.strictEqual(r.code, 'INVALID_TRANSITION');
   });
+
+  // DT-SM-13: PENDING → WITHDRAW → INVALID_TRANSITION
+  it('PENDING → WITHDRAW → INVALID_TRANSITION', () => {
+    const r = canTransition('PENDING', 'withdraw', 'GROUP_LEADER', {});
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.code, 'INVALID_TRANSITION');
+  });
+
+  // DT-SM-14: REJECTED → WITHDRAW → INVALID_TRANSITION
+  it('REJECTED → WITHDRAW → INVALID_TRANSITION', () => {
+    const r = canTransition('REJECTED', 'withdraw', 'GROUP_LEADER', {});
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.code, 'INVALID_TRANSITION');
+  });
 });
 
 describe('nextStatus', () => {
@@ -100,4 +114,6 @@ describe('nextStatus', () => {
   it('REVIEWING + reject → REJECTED', () => { assert.strictEqual(nextStatus('REVIEWING', 'reject'), 'REJECTED'); });
   it('APPROVED + reschedule → REJECTED', () => { assert.strictEqual(nextStatus('APPROVED', 'reschedule'), 'REJECTED'); });
   it('PENDING + approve → null', () => { assert.strictEqual(nextStatus('PENDING', 'approve'), null); });
+  // DT-SM-next: unknown action → null
+  it('unknown action → null', () => { assert.strictEqual(nextStatus('REVIEWING', 'unknown'), null); });
 });

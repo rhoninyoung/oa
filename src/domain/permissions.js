@@ -61,6 +61,7 @@ export function permit(role, userId, schedule, user, action) {
  * @returns {{ok: boolean, code?: string}}
  */
 export function canDeleteRow(task, schedule) {
+  if (!task) return { ok: false, code: 'UNKNOWN_SOURCE' };
   if (task.source === 'MASTER') return { ok: true };
   if (task.source === 'GROUP') {
     if (schedule.status === 'PENDING' || schedule.status === 'REJECTED') return { ok: true };

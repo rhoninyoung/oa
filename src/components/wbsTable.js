@@ -4,7 +4,7 @@
 import { getState, setState } from '../store.js';
 import { addLogEntry } from './activityLog.js';
 import { showToast } from './toast.js';
-import { pushUndo, popUndo, popRedo, cellsToTSV, tsvToCells, mapPaste, normalizeRange } from '../domain/tableOps.js';
+import { pushUndo, popUndo, popRedo } from '../domain/tableOps.js';
 import { canDeleteRow } from '../domain/permissions.js';
 import { checkDependencyCycle, propagateFinishChange } from '../domain/dependency.js';
 import { isWeekend, addWorkDays } from '../domain/calendar.js';
@@ -16,29 +16,52 @@ const COLUMNS = [
   { key: 'name',       label: '任务名称',   width: 180, sticky: true,  editable: true  },
   { key: 'ownerId',    label: '负责人',     width: 90,  sticky: false, editable: true, type: 'select' },
   { key: 'startDate',  label: '开始日期',   width: 110, sticky: false, editable: true, type: 'date' },
-  { key: 'endDate',     label: '结束日期',   width: 110, sticky: false, editable: true, type: 'date' },
+  { key: 'endDate',    label: '结束日期',   width: 110, sticky: false, editable: true, type: 'date' },
   { key: 'durationDays', label: '天数',     width: 60,  sticky: false, editable: true, type: 'number' },
-  { key: 'dep',        label: '依赖',        width: 120, sticky: false, editable: false },
+  { key: 'dep',        label: '依赖',       width: 120, sticky: false, editable: false },
   { key: 'note',       label: '备注',        width: 160, sticky: false, editable: true, multiline: true },
 ];
 
 const STICKY_COLS = 2; // # + 任务名称
 
-// ─── State for undo/redo ───────────────────────────────────────────────────
+// ─── Module state ─────────────────────────────────────────────────────────
 
 let _undoHistory = { past: [], future: [] };
-let _selection = null; // { row, col }
 let _copyBuffer = null;
 
-// ─── Public: render ───────────────────────────────────────────────────────
+// True while a textarea/input is actively being edited (not yet committed or cancelled)
+let _isEditing = false;
+
+// Current schedule context — updated at the start of each renderWBSTable call
+// so event delegation handlers can read the fresh value without closure staleness
+let _currentScheduleId = null;
+let _currentCanEdit = false;
+
+// ─── Event delegation state (singleton listeners on #wbs-table, set up once) ───
+
+let _wbseListenersInitialized = false;
+
+// ─── Public API ───────────────────────────────────────────────────────────
+
+/** Returns true if the user is currently editing a cell (textarea/input visible). */
+export function isCellEditing() {
+  return _isEditing;
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────
 
 export function renderWBSTable(schedule, tasks) {
+  // Update module-level context so event delegation handlers are never stale
+  _currentScheduleId = schedule?.id ?? null;
   const state = getState();
   const users = state.users;
   const holidays = state.holidays ?? [];
   const currentUserId = state.currentUserId;
   const role = users.find(u => u.id === currentUserId)?.role;
-  const canEdit = (role === 'GROUP_LEADER' && schedule?.groupId === users.find(u => u.id === currentUserId)?.groupId);
+  _currentCanEdit = (role === 'GROUP_LEADER' && schedule?.groupId === users.find(u => u.id === currentUserId)?.groupId);
+  const canEdit = _currentCanEdit; // local alias for render closure
+
+  initWBSEventListeners(); // idempotent — only attaches listeners once
 
   const sorted = [...tasks].sort((a, b) => a.orderIndex - b.orderIndex);
 
@@ -49,8 +72,10 @@ export function renderWBSTable(schedule, tasks) {
     return `<th class="${sticky}" style="width:${col.width}px;min-width:${col.width}px">${col.label}</th>`;
   }).join('')}</tr>`;
 
-  // Body
+  // Body — skip if user is mid-edit to avoid destroying the live input
   const tbody = document.getElementById('wbs-tbody');
+  if (_isEditing) return; // keep current DOM intact
+
   tbody.innerHTML = sorted.map((task, ri) => {
     const depTask = task.dependencyTaskId
       ? state.tasks.find(t => t.id === task.dependencyTaskId)
@@ -113,57 +138,170 @@ export function renderWBSTable(schedule, tasks) {
     }</tr>`;
   }).join('');
 
-  // Attach events
-  attachCellEvents(tbody, schedule, canEdit);
-  setupContextMenu(tbody, schedule, canEdit);
-  initTableKeyboard(tbody, schedule, canEdit);
+}
+
+// ─── Event delegation initialiser (runs once, idempotent) ───────────────────
+
+/**
+ * Set up all WBS event listeners on #wbs-table using event delegation.
+ * Called once at first render; all subsequent renders reuse the same listeners.
+ * Handlers read _currentScheduleId / _currentCanEdit from module scope — these
+ * are refreshed at the start of every renderWBSTable() call.
+ */
+function initWBSEventListeners() {
+  if (_wbseListenersInitialized) return;
+  _wbseListenersInitialized = true;
+
+  // Create the singleton _ctxMenu element before attaching listeners that use it
+  setupContextMenu();
+
+  const table = document.getElementById('wbs-table');
+  if (!table) return;
+
+  // ── Cell dblclick → start edit ──────────────────────────────────────────
+  table.addEventListener('dblclick', (e) => {
+    const td = e.target.closest('td.cell-editable');
+    if (!td) return;
+    startEdit(td);
+  });
+
+  // ── Input/select change + blur ───────────────────────────────────────────
+  table.addEventListener('change', (e) => {
+    if (e.target.matches('.cell-input, .cell-select')) {
+      applyCellEdit(e.target);
+    }
+  });
+
+  table.addEventListener('blur', (e) => {
+    // Use mousedown→preventDefault trick for blur-gating on inputs
+    if (e.target.matches('.cell-input, .cell-textarea')) {
+      if (e.target.dataset.committing === '1') return;
+      e.target.dataset.committing = '1';
+      _isEditing = false;
+      applyCellEdit(e.target);
+    }
+  }, true); // capture phase to intercept before child
+
+  // ── Dependency picker button ─────────────────────────────────────────────
+  table.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-pick-dep');
+    if (!btn) return;
+    e.stopPropagation();
+    const state = getState();
+    const sched = state.schedules.find(s => s.id === _currentScheduleId);
+    showDependencyPicker(btn.dataset.taskId, sched);
+  });
+
+  // ── Context menu ─────────────────────────────────────────────────────────
+  table.addEventListener('contextmenu', (e) => {
+    if (!_currentCanEdit) return;
+    e.preventDefault();
+    const td = e.target.closest('td');
+    if (!td) return;
+    const row = td.closest('tr');
+    if (!row) return;
+    const taskId = row.dataset.taskId;
+    const ri = parseInt(row.dataset.rowIndex);
+    if (isNaN(ri)) return;
+
+    const state = getState();
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const sched = state.schedules.find(s => s.id === task.scheduleId);
+    const canDel = canDeleteRow(task, sched);
+
+    _ctxMenu.innerHTML = `
+      <div class="ctx-item" data-action="insert-above" data-ri="${ri}">上方插入行</div>
+      <div class="ctx-item" data-action="insert-below" data-ri="${ri}">下方插入行</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item ${canDel.ok ? '' : 'text-muted'}" data-action="delete" data-task-id="${taskId}">删除当前行</div>
+    `;
+    _ctxMenu.classList.add('visible');
+    const rect = td.getBoundingClientRect();
+    _ctxMenu.style.top = rect.bottom + 'px';
+    _ctxMenu.style.left = rect.left + 'px';
+  });
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  table.addEventListener('keydown', (e) => {
+    if (_isEditing) return;
+    if (!_currentCanEdit) return;
+
+    if (e.ctrlKey || e.metaKey) {
+      switch (e.key) {
+        case 'c': {
+          e.preventDefault();
+          const td = document.activeElement?.closest('td');
+          if (!td) return;
+          const taskId = td.closest('tr').dataset.taskId;
+          const task = getState().tasks.find(t => t.id === taskId);
+          if (!task) return;
+          _copyBuffer = [[task.name ?? '', task.note ?? '']];
+          showToast('已复制 ' + _copyBuffer.length + ' 个任务', 'info');
+          break;
+        }
+        case 'v': {
+          e.preventDefault();
+          if (!_copyBuffer) return;
+          const td = document.activeElement?.closest('td');
+          if (!td) return;
+          const targetTaskId = td.closest('tr').dataset.taskId;
+          const state = getState();
+          const targetTask = state.tasks.find(t => t.id === targetTaskId);
+          if (!targetTask) return;
+          _undoHistory = pushUndo(_undoHistory, JSON.parse(JSON.stringify(state.tasks)));
+          const [name, note] = _copyBuffer[0] ?? [];
+          const newTasks = state.tasks.map(t =>
+            t.id === targetTaskId ? { ...t, name: name ?? t.name, note: note ?? t.note } : t
+          );
+          setState({ ...state, tasks: newTasks });
+          showToast('已粘贴', 'info');
+          break;
+        }
+        case 'z': {
+          e.preventDefault();
+          doUndo(); break;
+        }
+        case 'y': {
+          e.preventDefault();
+          doRedo(); break;
+        }
+      }
+    }
+  });
 }
 
 // ─── Cell events ────────────────────────────────────────────────────────────
 
-function attachCellEvents(tbody, schedule, canEdit) {
-  if (!canEdit) return;
-
-  // Double-click to edit (for text cells)
-  tbody.querySelectorAll('td.cell-editable').forEach(td => {
-    td.addEventListener('dblclick', () => startEdit(td, schedule));
-  });
-
-  // Change events for inputs/selects
-  tbody.querySelectorAll('.cell-input, .cell-select').forEach(el => {
-    el.addEventListener('change', () => {
-      applyCellEdit(el, schedule);
-    });
-    el.addEventListener('blur', () => {
-      applyCellEdit(el, schedule);
-    });
-  });
-
-  // Pick dependency button
-  tbody.querySelectorAll('.btn-pick-dep').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      showDependencyPicker(btn.dataset.taskId, schedule);
-    });
-  });
-}
-
-function startEdit(td, schedule) {
+function startEdit(td) {
   if (td.querySelector('input, select, textarea')) return;
   const col = td.dataset.col;
   const taskId = td.closest('tr').dataset.taskId;
   const task = getState().tasks.find(t => t.id === taskId);
   if (!task) return;
 
+  _isEditing = true;
+
   let input;
   if (col === 'note' || col === 'name') {
     input = document.createElement('textarea');
     input.className = 'cell-textarea';
     input.value = task[col] ?? '';
-    // Ctrl+Enter or Escape to commit
+    input.rows = 1;
+    input.style.height = 'var(--row-height, 36px)';
+
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { input.remove(); }
-      if (e.key === 'Enter' && !e.altKey && !e.ctrlKey) { e.preventDefault(); commitTextarea(input, taskId, col, schedule); }
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        _isEditing = false;
+        input.remove();
+      }
+      if (e.key === 'Enter' && !e.altKey && !e.ctrlKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        _isEditing = false;
+        commitTextarea(input, taskId, col);
+      }
       if (e.key === 'Enter' && (e.altKey || e.ctrlKey)) {
         e.preventDefault();
         const v = input.value;
@@ -172,48 +310,73 @@ function startEdit(td, schedule) {
         input.selectionStart = input.selectionEnd = sel.start + 1;
       }
     });
+
+    input.addEventListener('blur', () => {
+      if (input.dataset.cancel === '1') return;
+      // Prevent re-entrant blur (e.g. removing the input fires another blur)
+      input.dataset.committing = '1';
+    });
+
   } else {
     input = document.createElement('input');
     input.type = col === 'durationDays' ? 'number' : 'text';
     input.className = 'cell-input';
     input.value = task[col] ?? '';
     input.style.cssText = 'border:none;outline:2px solid #2563eb;width:100%;height:100%';
+
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { commitInput(input, taskId, col, schedule); }
-      if (e.key === 'Escape') { input.remove(); }
+      if (e.key === 'Enter') {
+        e.stopPropagation();
+        _isEditing = false;
+        commitInput(input, taskId, col);
+      }
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        _isEditing = false;
+        input.remove();
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      if (input.dataset.committing === '1') return;
+      input.dataset.committing = '1';
+      _isEditing = false;
+      commitInput(input, taskId, col, schedule);
     });
   }
 
   td.innerHTML = '';
   td.appendChild(input);
   input.focus();
+  input.select();
 }
 
-function commitTextarea(input, taskId, col, schedule) {
+function commitTextarea(input, taskId, col) {
   const newVal = input.value;
-  applyEdit(taskId, col, newVal, schedule);
-  input.remove();
+  input.remove(); // synchronous — td is now empty, no second blur
+  applyEdit(taskId, col, newVal);
 }
 
-function commitInput(input, taskId, col, schedule) {
+function commitInput(input, taskId, col) {
   const newVal = input.type === 'number' ? Number(input.value) : input.value;
-  applyEdit(taskId, col, newVal, schedule);
   input.remove();
+  applyEdit(taskId, col, newVal);
 }
 
-function applyCellEdit(el, schedule) {
+function applyCellEdit(el) {
+  if (el.dataset.committing === '1') return;
   const taskId = el.dataset.taskId;
   const col = el.dataset.col;
   const newVal = el.type === 'checkbox' ? el.checked : (el.type === 'number' ? Number(el.value) : el.value);
-  applyEdit(taskId, col, newVal, schedule);
+  _isEditing = false;
+  applyEdit(taskId, col, newVal);
 }
 
-function applyEdit(taskId, col, newVal, schedule) {
+function applyEdit(taskId, col, newVal) {
   const state = getState();
   const task = state.tasks.find(t => t.id === taskId);
   if (!task) return;
 
-  // Push to undo
   _undoHistory = pushUndo(_undoHistory, JSON.parse(JSON.stringify(state.tasks)));
 
   let updated = { ...task, [col]: newVal };
@@ -227,7 +390,6 @@ function applyEdit(taskId, col, newVal, schedule) {
     }
   }
   if (col === 'endDate' && updated.startDate && newVal) {
-    // Recalc duration
     const s = new Date(updated.startDate + 'T00:00:00');
     const e = new Date(newVal + 'T00:00:00');
     updated.durationDays = Math.round((e - s) / 86400000) + 1;
@@ -243,140 +405,61 @@ function applyEdit(taskId, col, newVal, schedule) {
       return ch ? { ...t, ...ch } : t;
     });
     setState({ ...state, tasks: newTasks });
-    renderWBSTable(schedule, getState().tasks.filter(t => t.scheduleId === schedule.id));
-    return;
+    return; // setState → subscribe(render) handles re-render
   }
 
   const newTasks = state.tasks.map(t => t.id === taskId ? updated : t);
   setState({ ...state, tasks: newTasks });
-  renderWBSTable(schedule, getState().tasks.filter(t => t.scheduleId === schedule.id));
+  // setState → subscribe(render) handles re-render; do NOT call renderWBSTable here
 }
 
 // ─── Keyboard handling ─────────────────────────────────────────────────────
 
-export function initTableKeyboard(tbody, schedule, canEdit) {
-  if (!canEdit) return;
+let _tbodyKeyHandler = null;
 
-  tbody.addEventListener('keydown', (e) => {
-    const cell = document.activeElement;
-    if (!cell) return;
+// Deprecated: keyboard handling is now via event delegation in initWBSEventListeners
+export function initTableKeyboard() { /* noop */ }
 
-    if (e.ctrlKey || e.metaKey) {
-      switch (e.key) {
-        case 'c': { // Copy
-          e.preventDefault();
-          const td = cell.closest('td');
-          if (!td) return;
-          const tr = td.closest('tr');
-          const taskId = tr.dataset.taskId;
-          const task = getState().tasks.find(t => t.id === taskId);
-          if (!task) return;
-          _copyBuffer = [[task.name ?? '', task.note ?? '']];
-          showToast('已复制 ' + _copyBuffer.length + ' 个任务', 'info');
-          break;
-        }
-        case 'v': { // Paste
-          e.preventDefault();
-          if (!_copyBuffer) return;
-          const td = cell.closest('td');
-          if (!td) return;
-          const tr = td.closest('tr');
-          const targetTaskId = tr.dataset.taskId;
-          const state = getState();
-          const targetTask = state.tasks.find(t => t.id === targetTaskId);
-          if (!targetTask) return;
-          _undoHistory = pushUndo(_undoHistory, JSON.parse(JSON.stringify(state.tasks)));
-          const [name, note] = _copyBuffer[0] ?? [];
-          const newTasks = state.tasks.map(t =>
-            t.id === targetTaskId ? { ...t, name: name ?? t.name, note: note ?? t.note } : t
-          );
-          setState({ ...state, tasks: newTasks });
-          renderWBSTable(schedule, getState().tasks.filter(t => t.scheduleId === schedule.id));
-          showToast('已粘贴', 'info');
-          break;
-        }
-        case 'z': { // Undo
-          e.preventDefault();
-          doUndo(schedule); break;
-        }
-        case 'y': { // Redo
-          e.preventDefault();
-          doRedo(schedule); break;
-        }
-      }
-    }
-  });
-}
-
-function doUndo(schedule) {
+function doUndo() {
   const result = popUndo(_undoHistory);
   if (!result.state) { showToast('无可撤销', 'info'); return; }
   _undoHistory = result.history;
   const state = getState();
   setState({ ...state, tasks: result.state });
-  renderWBSTable(schedule, result.state.filter(t => t.scheduleId === schedule.id));
+  // setState → subscribe(render) handles re-render
 }
 
-function doRedo(schedule) {
+function doRedo() {
   const result = popRedo(_undoHistory);
   if (!result.state) { showToast('无可重做', 'info'); return; }
   _undoHistory = result.history;
   const state = getState();
   setState({ ...state, tasks: result.state });
-  renderWBSTable(schedule, result.state.filter(t => t.scheduleId === schedule.id));
+  // setState → subscribe(render) handles re-render
 }
 
 // ─── Context menu ───────────────────────────────────────────────────────────
 
 let _ctxMenu = null;
+let _ctxDocClickHandler = null;
 
-function setupContextMenu(tbody, schedule, canEdit) {
-  if (_ctxMenu) _ctxMenu.remove();
-
-  _ctxMenu = document.createElement('div');
-  _ctxMenu.id = 'ctx-menu';
-  document.body.appendChild(_ctxMenu);
-
-  document.addEventListener('click', () => _ctxMenu.classList.remove('visible'));
-
-  tbody.addEventListener('contextmenu', (e) => {
-    if (!canEdit) return;
-    e.preventDefault();
-    const td = e.target.closest('td');
-    if (!td) return;
-    const row = td.closest('tr');
-    const taskId = row.dataset.taskId;
-    const ri = parseInt(row.dataset.rowIndex);
-
-    const state = getState();
-    const task = state.tasks.find(t => t.id === taskId);
-    const canDel = canDeleteRow(task, state.schedules.find(s => s.id === task.scheduleId));
-
-    _ctxMenu.innerHTML = `
-      <div class="ctx-item" data-action="insert-above" data-ri="${ri}">上方插入行</div>
-      <div class="ctx-item" data-action="insert-below" data-ri="${ri}">下方插入行</div>
-      <div class="ctx-sep"></div>
-      <div class="ctx-item ${canDel.ok ? '' : 'text-muted'}" data-action="delete" data-task-id="${taskId}">删除当前行</div>
-    `;
-    _ctxMenu.classList.add('visible');
-    const rect = e.target.getBoundingClientRect();
-    _ctxMenu.style.top = rect.bottom + 'px';
-    _ctxMenu.style.left = rect.left + 'px';
-  });
-
-  _ctxMenu.addEventListener('click', (e) => {
-    const item = e.target.closest('.ctx-item');
-    if (!item) return;
-    const action = item.dataset.action;
-    if (action === 'delete') handleDeleteRow(item.dataset.taskId, schedule);
-    if (action === 'insert-above') handleInsertRow(parseInt(item.dataset.ri), 0, schedule);
-    if (action === 'insert-below') handleInsertRow(parseInt(item.dataset.ri), 1, schedule);
-    _ctxMenu.classList.remove('visible');
-  });
+function setupContextMenu() {
+  // Singleton: only creates the _ctxMenu DOM element and document click-away
+  // handler once. Contextmenu event is now handled via delegation in
+  // initWBSEventListeners.
+  if (!_ctxMenu) {
+    _ctxMenu = document.createElement('div');
+    _ctxMenu.id = 'ctx-menu';
+    document.body.appendChild(_ctxMenu);
+    _ctxDocClickHandler = () => _ctxMenu.classList.remove('visible');
+    document.addEventListener('click', _ctxDocClickHandler);
+  }
 }
 
-function handleInsertRow(rowIndex, offset, schedule) {
+function handleInsertRow(rowIndex, offset) {
   const state = getState();
+  const schedule = state.schedules.find(s => s.id === _currentScheduleId);
+  if (!schedule) return;
   _undoHistory = pushUndo(_undoHistory, JSON.parse(JSON.stringify(state.tasks)));
   const schedTasks = state.tasks.filter(t => t.scheduleId === schedule.id);
   const insertAt = rowIndex + offset;
@@ -396,30 +479,29 @@ function handleInsertRow(rowIndex, offset, schedule) {
   const rest = schedTasks.map(t => t.orderIndex >= insertAt ? { ...t, orderIndex: t.orderIndex + 1 } : t);
   const newTasks = [...state.tasks.filter(t => t.scheduleId !== schedule.id), ...rest, newTask];
   setState({ ...state, tasks: newTasks });
-  renderWBSTable(schedule, getState().tasks.filter(t => t.scheduleId === schedule.id));
 }
 
-function handleDeleteRow(taskId, schedule) {
+function handleDeleteRow(taskId) {
   const state = getState();
   const task = state.tasks.find(t => t.id === taskId);
   if (!task) return;
-  const check = canDeleteRow(task, state.schedules.find(s => s.id === task.scheduleId));
+  const schedule = state.schedules.find(s => s.id === task.scheduleId);
+  const check = canDeleteRow(task, schedule);
   if (!check.ok) { showToast(check.message ?? '不可删除', 'error'); return; }
   _undoHistory = pushUndo(_undoHistory, JSON.parse(JSON.stringify(state.tasks)));
-  const remaining = state.tasks.filter(t => t.scheduleId !== schedule.id);
-  const others = state.tasks.filter(t => t.id !== taskId && t.scheduleId === schedule.id);
+  const remaining = state.tasks.filter(t => t.scheduleId !== task.scheduleId);
+  const others = state.tasks.filter(t => t.id !== taskId && t.scheduleId === task.scheduleId);
   const newTasks = [...remaining, ...others.map(t => t.orderIndex > task.orderIndex ? { ...t, orderIndex: t.orderIndex - 1 } : t)];
   setState({ ...state, tasks: newTasks });
-  renderWBSTable(schedule, getState().tasks.filter(t => t.scheduleId === schedule.id));
 }
 
 // ─── Dependency picker ──────────────────────────────────────────────────────
 
 let _depOverlay = null;
 
-export function showDependencyPicker(taskId, schedule) {
+export function showDependencyPicker(taskId) {
   const state = getState();
-  const schedTasks = state.tasks.filter(t => t.scheduleId === schedule.id);
+  const schedTasks = state.tasks.filter(t => t.scheduleId === _currentScheduleId);
   const currentTask = schedTasks.find(t => t.id === taskId);
   if (!currentTask) return;
 
@@ -450,7 +532,7 @@ export function showDependencyPicker(taskId, schedule) {
   _depOverlay.querySelectorAll('li[data-dep-task-id]').forEach(li => {
     li.addEventListener('click', () => {
       const depId = li.dataset.depTaskId;
-      commitDependency(taskId, depId || null, schedule);
+      commitDependency(taskId, depId || null);
       _depOverlay.remove();
       _depOverlay = null;
     });
@@ -462,19 +544,17 @@ export function showDependencyPicker(taskId, schedule) {
   });
 }
 
-function commitDependency(taskId, depTaskId, schedule) {
+function commitDependency(taskId, depTaskId) {
   const state = getState();
   const allTasks = state.tasks;
 
   if (depTaskId) {
-    // Cycle check
     const cycleResult = checkDependencyCycle(allTasks, taskId, depTaskId);
     if (cycleResult.ok) {
       showToast(`循环依赖：${cycleResult.path.join(' → ')}`, 'error');
       addLogEntry('DEP_CYCLE_BLOCKED', state.currentUserId, cycleResult.path.join(' → '));
       return;
     }
-    // 1-to-1 check
     const existingDep = allTasks.find(t => t.dependencyTaskId === depTaskId);
     if (existingDep && existingDep.id !== taskId) {
       showToast('该任务已被其他任务依赖', 'error'); return;
@@ -484,7 +564,6 @@ function commitDependency(taskId, depTaskId, schedule) {
   _undoHistory = pushUndo(_undoHistory, JSON.parse(JSON.stringify(allTasks)));
   const updatedTask = { ...allTasks.find(t => t.id === taskId), dependencyTaskId: depTaskId || null };
 
-  // Recompute downstream
   const holidays = state.holidays ?? [];
   const allWithNew = allTasks.map(t => t.id === taskId ? updatedTask : t);
   const changes = depTaskId ? propagateFinishChange(allWithNew, depTaskId, isWeekend, addWorkDays, holidays) : new Map();
@@ -495,7 +574,7 @@ function commitDependency(taskId, depTaskId, schedule) {
 
   setState({ ...state, tasks: finalTasks });
   addLogEntry('DEP_SET', state.currentUserId, `设置依赖：${updatedTask.name} → ${finalTasks.find(t=>t.id===depTaskId)?.name ?? '无'}`);
-  renderWBSTable(schedule, getState().tasks.filter(t => t.scheduleId === schedule.id));
+  // setState → subscribe(render) handles re-render
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
