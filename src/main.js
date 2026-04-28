@@ -7,6 +7,10 @@ import { renderRoleSwitcher } from './components/roleSwitcher.js';
 import { renderProjectTree } from './components/projectTree.js';
 import { renderWBSTable, initTableKeyboard, isCellEditing } from './components/wbsTable.js';
 import { renderActivityLog } from './components/activityLog.js';
+import { renderStatsView } from './components/statsView.js';
+import { renderCalendarView } from './components/calendarView.js';
+import { renderGanttView } from './components/ganttView.js';
+import { renderKanbanView } from './components/kanbanView.js';
 import { scheduleAutoSave } from './hooks/autoSave.js';
 import {
   isAPIMode as isAPIModeCheck,
@@ -527,6 +531,44 @@ function setupGlobalEvents() {
     setState({ tasks: [...otherTasks, ...result.tasks] });
     showToast(`已导入 ${result.tasks.length} 条任务`, 'success');
     input.value = '';
+  });
+
+  // Statistics dashboard
+  document.getElementById('btn-stats')?.addEventListener('click', () => {
+    const state = getState();
+    renderStatsView(state.activeIterationId);
+  });
+
+  // View tab switching
+  function activateTab(tabId) {
+    document.querySelectorAll('.view-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.id === tabId);
+    });
+  }
+
+  document.getElementById('tab-wbs')?.addEventListener('click', () => {
+    activateTab('tab-wbs');
+    document.getElementById('group-view-wrapper')?.classList.remove('hidden');
+    document.getElementById('master-view-wrapper')?.classList.add('hidden');
+    document.getElementById('calendar-view-wrapper')?.classList.add('hidden');
+    document.getElementById('gantt-view-wrapper')?.classList.add('hidden');
+    document.getElementById('kanban-view-wrapper')?.classList.add('hidden');
+    document.getElementById('stats-view-wrapper')?.classList.add('hidden');
+  });
+
+  document.getElementById('tab-calendar')?.addEventListener('click', () => {
+    activateTab('tab-calendar');
+    renderCalendarView();
+  });
+
+  document.getElementById('tab-gantt')?.addEventListener('click', () => {
+    activateTab('tab-gantt');
+    renderGanttView();
+  });
+
+  document.getElementById('tab-kanban')?.addEventListener('click', () => {
+    activateTab('tab-kanban');
+    renderKanbanView();
   });
 
   // Ctrl+S trigger

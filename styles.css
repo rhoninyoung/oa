@@ -298,6 +298,288 @@ td .dep-arrow { color: var(--primary); font-size: 11px; margin-left: 4px; }
 .ctx-item.danger { color: var(--danger); }
 .ctx-sep { border-top: 1px solid var(--border); margin: 4px 0; }
 
+/* ─── Statistics Dashboard ──────────────────────────────────────────────────── */
+#stats-view-wrapper {
+  padding: 16px;
+}
+#stats-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+#stats-header h2 { margin: 0; }
+#stats-iteration-select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+}
+.stats-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.stats-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  flex: 1;
+  min-width: 320px;
+}
+.stats-card.full-width { min-width: 100%; }
+.stats-card h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ─── Calendar View ──────────────────────────────────────────────────────────── */
+#calendar-view-wrapper {
+  padding: 12px;
+  overflow: auto;
+  flex: 1;
+}
+.cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.cal-nav button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.cal-grid {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.cal-header-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.cal-header-cell {
+  padding: 6px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.cal-body {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.cal-cell {
+  min-height: 80px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 4px;
+  background: var(--surface);
+}
+.cal-cell:nth-child(7n) { border-right: none; }
+.cal-other-month { background: var(--bg); opacity: 0.5; }
+.cal-day-num {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+.cal-task {
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  margin-bottom: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-task:hover { opacity: 0.8; }
+.cal-task-selected { outline: 2px solid var(--primary); }
+.cal-more { font-size: 10px; color: var(--text-secondary); text-align: center; }
+.cal-legend {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.cal-legend-item { display: flex; align-items: center; gap: 4px; }
+.cal-legend-color {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+/* ─── Gantt View ────────────────────────────────────────────────────────────── */
+#gantt-view-wrapper {
+  padding: 12px;
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+.gantt-container {
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: auto;
+}
+.gantt-left {
+  min-width: 180px;
+  border-right: 2px solid var(--border);
+  flex-shrink: 0;
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  z-index: 10;
+}
+.gantt-labels-header {
+  height: 32px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.gantt-row-label {
+  height: 32px;
+  padding: 4px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.gantt-task-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gantt-task-owner { color: var(--text-secondary); font-size: 11px; }
+.gantt-right { overflow-x: auto; position: relative; }
+.gantt-timeline-header {
+  display: flex;
+  height: 32px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+}
+.gantt-tick {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border-right: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+.gantt-tick.weekend { background: rgba(0,0,0,0.03); }
+.gantt-tick.month-start { border-right-color: #888; }
+.gantt-tick-label { padding: 0 2px; }
+.gantt-rows { position: relative; }
+.gantt-row { border-bottom: 1px solid var(--border); }
+.gantt-bar { cursor: pointer; display: flex; align-items: center; padding: 0 4px; }
+.gantt-bar-label {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.master-bar { border-left-style: dashed !important; }
+
+/* ─── Kanban View ────────────────────────────────────────────────────────────── */
+#kanban-view-wrapper {
+  padding: 12px;
+  flex: 1;
+  overflow: auto;
+}
+.kanban-board {
+  display: flex;
+  gap: 12px;
+  min-height: 400px;
+}
+.kanban-col {
+  flex: 1;
+  min-width: 200px;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+}
+.kanban-col-header {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.kanban-col-title { font-weight: 600; font-size: 13px; }
+.kanban-col-count {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.kanban-col-body {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 100px;
+}
+.kanban-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 12px;
+}
+.kanban-schedule-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  cursor: grab;
+}
+.kanban-sched-header {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.kanban-task-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  cursor: grab;
+}
+.kanban-task-card:active { cursor: grabbing; }
+.kanban-task-name { font-size: 12px; font-weight: 500; margin-bottom: 2px; }
+.kanban-task-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
 /* ─── Activity Log ────────────────────────────────────────── */
 #activity-log-panel {
   width: var(--log-width);
@@ -373,6 +655,25 @@ td .dep-arrow { color: var(--primary); font-size: 11px; margin-left: 4px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 .text-muted { color: var(--text-muted); }
 .text-primary { color: var(--primary); }
+
+/* ─── View Tabs ────────────────────────────────────────────── */
+.view-tab {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.view-tab.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+.view-tab:hover:not(.active) {
+  background: var(--bg);
+}
 .text-danger { color: var(--danger); }
 .text-success { color: var(--success); }
 .mt-4 { margin-top: 4px; }

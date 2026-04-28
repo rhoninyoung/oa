@@ -8,6 +8,7 @@ import { pushUndo, popUndo, popRedo } from '../domain/tableOps.js';
 import { canDeleteRow } from '../domain/permissions.js';
 import { checkDependencyCycle, propagateFinishChange } from '../domain/dependency.js';
 import { isWeekend, addWorkDays } from '../domain/calendar.js';
+import { renderSearchFilter } from './searchFilter.js';
 
 // ─── Column definitions ────────────────────────────────────────────────────
 
@@ -65,6 +66,16 @@ export function renderWBSTable(schedule, tasks) {
 
   const sorted = [...tasks].sort((a, b) => a.orderIndex - b.orderIndex);
 
+  // Filter bar
+  const filterBar = document.getElementById('wbs-filter-bar') || (() => {
+    const el = document.createElement('div');
+    el.id = 'wbs-filter-bar';
+    const table = document.getElementById('wbs-table');
+    table?.parentNode?.insertBefore(el, table);
+    return el;
+  })();
+  renderSearchFilter(filterBar);
+
   // Header
   const thead = document.getElementById('wbs-thead');
   thead.innerHTML = `<tr>${COLUMNS.map((col, ci) => {
@@ -84,7 +95,7 @@ export function renderWBSTable(schedule, tasks) {
     const isMasterRow = task.source === 'MASTER';
     const readonly = !canEdit || isMasterRow;
 
-    return `<tr data-task-id="${task.id}" data-row-index="${ri}">${
+    return `<tr data-task-id="${task.id}" data-row-index="${ri}" draggable="true">${
       COLUMNS.map((col, ci) => {
         const sticky = ci < STICKY_COLS ? ' sticky' : '';
         const cls = readonly ? '' : 'cell-editable';
@@ -268,6 +279,58 @@ function initWBSEventListeners() {
         }
       }
     }
+
+    // ── Alt+Drag row reorder ─────────────────────────────────────────────────
+    if (e.altKey && e.type === 'mousedown') {
+      // Handled in mousedown below for drag detection
+    }
+  });
+
+  // Alt + drag to reorder rows
+  let draggedTaskId = null;
+
+  table.addEventListener('mousedown', (e) => {
+    if (!e.altKey) return;
+    const row = e.target.closest('tr[data-task-id]');
+    if (!row) return;
+    draggedTaskId = row.dataset.taskId;
+    row.style.opacity = '0.5';
+  });
+
+  table.addEventListener('mouseup', (e) => {
+    if (!draggedTaskId) return;
+    const targetRow = e.target.closest('tr[data-task-id]');
+    if (targetRow && targetRow.dataset.taskId !== draggedTaskId) {
+      const state = getState();
+      const sched = state.schedules.find(s => s.id === _currentScheduleId);
+      if (!sched) return;
+
+      const taskId = draggedTaskId;
+      const afterTaskId = targetRow.dataset.taskId;
+
+      const taskList = state.tasks
+        .filter(t => t.scheduleId === sched.id)
+        .sort((a, b) => a.orderIndex - b.orderIndex);
+
+      const fromIdx = taskList.findIndex(t => t.id === taskId);
+      const toIdx = taskList.findIndex(t => t.id === afterTaskId);
+      if (fromIdx === -1 || toIdx === -1) return;
+
+      // Reorder: move task from fromIdx to toIdx
+      const reordered = [...taskList];
+      const [moved] = reordered.splice(fromIdx, 1);
+      reordered.splice(toIdx, 0, moved);
+
+      // Reassign orderIndex
+      const updated = reordered.map((t, i) => ({ ...t, orderIndex: i }));
+      const otherTasks = state.tasks.filter(t => t.scheduleId !== sched.id);
+      setState({ ...state, tasks: [...otherTasks, ...updated] });
+      showToast('已重排任务顺序', 'success');
+    }
+
+    // Reset opacity
+    document.querySelectorAll('#wbs-tbody tr').forEach(r => r.style.opacity = '');
+    draggedTaskId = null;
   });
 }
 

@@ -11,6 +11,7 @@ import { UsersModule } from './modules/users/users.module.js';
 import { IterationsModule } from './modules/iterations/iterations.module.js';
 import { GroupsModule } from './modules/groups/groups.module.js';
 import { HolidaysModule } from './modules/holidays/holidays.module.js';
+import { StatisticsModule } from './modules/statistics/statistics.module.js';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { HolidaysModule } from './modules/holidays/holidays.module.js';
     IterationsModule,
     GroupsModule,
     HolidaysModule,
+    StatisticsModule,
   ],
 })
 export class AppModule {}
