@@ -1,23 +1,39 @@
-# OA 项目管理 MVP（HTML 单机版）
+# OA 项目管理 MVP
 
-> 零构建、零依赖、零后端。一个人本地双击即可跑完"GL 编辑 → 提交 → PM 审批 → 总表"的完整业务闭环。
+前后端分离的单页应用，支持 **localStorage 模式**（纯前端）和 **API 模式**（连接后端服务）。
 
 ## 快速启动
 
+### localStorage 模式（无需后端）
 ```bash
-# 推荐：用 Python 内置服务器（ES Modules 需要 http 协议）
-python3 -m http.server 8080
-# 浏览器打开 http://localhost:8080
-
-# 或用 npx（无需安装任何全局依赖）
-npx serve .
+./start.sh
+# 打开 http://localhost:8080
 ```
 
-> 注意：不能直接双击 `index.html`（`file://` 协议下 ES Modules 有跨域限制）。必须走 http 服务器。
+### API 模式（需要 Docker）
+```bash
+./start.sh --api
+# 打开 http://localhost:8080
+# 在右上角输入 http://localhost:3000 并点击"连接"
+```
+
+### 停止服务
+```bash
+./stop.sh
+```
+
+## 启动脚本
+
+| 脚本 | 说明 |
+|------|------|
+| `./start.sh` | 仅前端（localStorage 模式） |
+| `./start.sh --api` | 前端 + 后端 API（Docker） |
+| `./stop.sh` | 停止所有服务 |
 
 ## 数据
 
-- 所有数据保存在浏览器 `localStorage`，key 为 `oa.state.v1`
+- **localStorage 模式**: 所有数据保存在浏览器 `localStorage`，key 为 `oa.state.v1`
+- **API 模式**: 数据持久化到 PostgreSQL（Docker 内）
 - 右上角「导出」按钮下载完整 JSON 备份
 - 右上角「导入」按钮从 JSON 文件恢复数据
 
@@ -35,16 +51,41 @@ npx serve .
 | 主从同步（GL 组 ↔ PM 总表） | ✅ |
 | PM 总表新增 / 删除 MASTER 行 | ✅ |
 | 活动日志 | ✅ |
+| API 模式（REST + PostgreSQL） | ✅ |
 
 ## 测试
 
 ```bash
-node --test
+node --test                    # 单元测试（L1 Domain）
+pnpm --filter @oa-mvp/backend test   # 后端 L2 测试
+npx playwright test            # E2E 测试
+```
+
+## 开发命令
+
+```bash
+# 前端
+python3 -m http.server 8080
+
+# 后端（Docker 内）
+docker compose up -d
+
+# 数据库迁移
+pnpm run db:migrate
+
+# 数据库种子
+pnpm run db:seed
 ```
 
 ## 技术栈
 
-- 纯原生 HTML + CSS + ES Module JS（零框架、零依赖、零构建）
-- 状态管理：极简发布订阅 store（~60 行）
-- 持久化：localStorage + JSON 文件导入导出
-- 纯函数测试：Node.js 内置 `node --test`
+- **前端**: 原生 JavaScript（ES Modules），无框架
+- **后端**: NestJS + Prisma + PostgreSQL（Docker）
+- **测试**: Node.js 内置 `node --test` + Playwright E2E
+
+## 访问地址
+
+| 服务 | 地址 |
+|------|------|
+| 前端（localStorage 模式） | http://localhost:8080 |
+| 后端 API | http://localhost:3000 |

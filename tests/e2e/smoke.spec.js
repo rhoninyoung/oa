@@ -8,22 +8,35 @@ test.describe('OA MVP Smoke Tests', () => {
 
   test('页面加载无控制台错误', async ({ page }) => {
     const errors = [];
+    const failedRequests = [];
     page.on('console', msg => {
       if (msg.type() === 'error') errors.push(msg.text());
     });
     page.on('pageerror', err => errors.push(err.message));
+    page.on('response', resp => {
+      if (!resp.ok() && resp.url().match(/\.js$/)) {
+        failedRequests.push(`${resp.status()} ${resp.url()}`);
+      }
+    });
 
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // 验证核心元素存在
-    await expect(page.locator('#role-switcher')).toBeVisible();
+    // 验证核心元素存在且有内容（role-switcher 被 JS 模块渲染）
+    const roleSwitcher = page.locator('#role-switcher');
+    await expect(roleSwitcher).toBeVisible();
+    const roleSwitcherHtml = await roleSwitcher.innerHTML();
+    expect(roleSwitcherHtml.trim().length, 'role-switcher should be rendered by JS modules').toBeGreaterThan(0);
+
     await expect(page.locator('#project-tree')).toBeVisible();
     await expect(page.locator('#wbs-tbody')).toBeVisible();
 
     // 无 JS 错误（过滤掉浏览器自身的 favicon 错误）
     const realErrors = errors.filter(e => !e.includes('favicon'));
-    expect(realErrors, `Console errors: ${realErrors}`).toHaveLength(0);
+    expect(realErrors, `Console errors: ${JSON.stringify(realErrors)}`).toHaveLength(0);
+
+    // 无 JS 模块加载失败
+    expect(failedRequests, `Failed JS module loads: ${JSON.stringify(failedRequests)}`).toHaveLength(0);
   });
 
   test('角色切换器正常切换用户', async ({ page }) => {

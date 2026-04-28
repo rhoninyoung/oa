@@ -1,5 +1,5 @@
 // src/main.js
-import { getState, setState, subscribe, exportState, importState } from './store.js';
+import { getState, setState, subscribe, exportState, importState, isAPIMode, initFromAPI, mergeAPIData } from './store.js';
 import { buildSeed } from './seed.js';
 import { downloadJSON, pickJSONFile } from './io/importExport.js';
 import { renderRoleSwitcher } from './components/roleSwitcher.js';
@@ -7,15 +7,60 @@ import { renderProjectTree } from './components/projectTree.js';
 import { renderWBSTable, initTableKeyboard, isCellEditing } from './components/wbsTable.js';
 import { renderActivityLog } from './components/activityLog.js';
 import { scheduleAutoSave } from './hooks/autoSave.js';
+import {
+  isAPIMode as isAPIModeCheck,
+  fetchProjects,
+  fetchAllSchedulesWithTasks,
+  flattenProjectsResponse,
+  flattenScheduleResult,
+  saveDraft,
+  submitSchedule,
+  withdrawSchedule,
+  approveSchedule,
+  rejectSchedule,
+  reschedule,
+  addMasterRow,
+  deleteMasterRow,
+} from './api/client.js';
+
+export { isAPIMode } from './store.js';
+export { isAPIModeCheck as checkAPIMode };
 
 // ─── Bootstrap ─────────────────────────────────────────────────────────────
 
-function init() {
+async function init() {
+  if (isAPIModeCheck()) {
+    // API 模式：从后端拉取完整数据
+    try {
+      const projects = await fetchProjects();
+      const flat = flattenProjectsResponse(projects);
+      await initFromAPI({
+        projects,
+        fetchAllSchedulesWithTasks,
+        buildSeed,
+      });
+      // 合并基础数据（users/groups 等来自 buildSeed）
+      const state = getState();
+      setState({
+        ...state,
+        users: flat.users,
+        groups: flat.groups,
+        projects: flat.projects,
+        iterations: flat.iterations,
+        schedules: flat.schedules,
+        tasks: flat.tasks,
+      });
+    } catch (e) {
+      console.error('[initFromAPI]', e);
+      showToast('API 连接失败，使用本地数据', 'error');
+    }
+  }
+
   const state = getState();
   if (!state.users.length) {
-    // First run: load seed data
     setState(buildSeed());
   }
+
   render();
   setupGlobalEvents();
   subscribe(render);
@@ -213,113 +258,206 @@ function statusLabel(s) {
   return { PENDING: '草稿', REVIEWING: '待审', APPROVED: '已批', REJECTED: '已拒' }[s ?? ''] ?? s ?? '';
 }
 
-function handleSubmit() {
+async function handleSubmit() {
   const state = getState();
   const sched = _currentSchedule();
   if (!sched) return;
   const tasks = state.tasks.filter(t => t.scheduleId === sched.id);
   const user = state.users.find(u => u.id === state.currentUserId);
-  const result = canTransition(sched.status, 'submit', user.role, { tasks });
-  if (!result.ok) { showToast(result.message ?? result.code, 'error'); return; }
-  const newStatus = nextStatus(sched.status, 'submit');
-  const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
-  setState({ ...state, schedules: updated });
-  addLogEntry('SUBMIT', state.currentUserId, `${newStatus} ← ${sched.status}`);
-  showToast(`已提交，等待 PM 审批`, 'info');
+
+  // 本地状态机校验
+  const check = canTransition(sched.status, 'submit', user.role, { tasks });
+  if (!check.ok) { showToast(check.message ?? check.code, 'error'); return; }
+
+  if (isAPIModeCheck()) {
+    try {
+      const result = await submitSchedule(sched.id, state.currentUserId);
+      mergeAPIData(flattenScheduleResult(result.schedule));
+      addLogEntry('SUBMIT', state.currentUserId, `${result.schedule.status} ← ${sched.status}`);
+      showToast(`已提交，等待 PM 审批`, 'info');
+    } catch (e) {
+      showToast(`提交失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
+    }
+  } else {
+    const newStatus = nextStatus(sched.status, 'submit');
+    const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
+    setState({ ...state, schedules: updated });
+    addLogEntry('SUBMIT', state.currentUserId, `${newStatus} ← ${sched.status}`);
+    showToast(`已提交，等待 PM 审批`, 'info');
+  }
 }
 
-function handleWithdraw() {
+async function handleWithdraw() {
   const state = getState();
   const sched = _currentSchedule();
   if (!sched) return;
   const user = state.users.find(u => u.id === state.currentUserId);
-  const result = canTransition(sched.status, 'withdraw', user.role, {});
-  if (!result.ok) { showToast(result.message ?? result.code, 'error'); return; }
-  const newStatus = nextStatus(sched.status, 'withdraw');
-  const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
-  setState({ ...state, schedules: updated });
-  addLogEntry('WITHDRAW', state.currentUserId, `撤回至草稿`);
-  showToast(`已撤回`, 'info');
+
+  const check = canTransition(sched.status, 'withdraw', user.role, {});
+  if (!check.ok) { showToast(check.message ?? check.code, 'error'); return; }
+
+  if (isAPIModeCheck()) {
+    try {
+      const result = await withdrawSchedule(sched.id, state.currentUserId);
+      mergeAPIData(flattenScheduleResult(result.schedule));
+      addLogEntry('WITHDRAW', state.currentUserId, `撤回至草稿`);
+      showToast(`已撤回`, 'info');
+    } catch (e) {
+      showToast(`撤回失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
+    }
+  } else {
+    const newStatus = nextStatus(sched.status, 'withdraw');
+    const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
+    setState({ ...state, schedules: updated });
+    addLogEntry('WITHDRAW', state.currentUserId, `撤回至草稿`);
+    showToast(`已撤回`, 'info');
+  }
 }
 
-function handleApprove() {
+async function handleApprove() {
   const state = getState();
   const sched = _currentSchedule();
   if (!sched) return;
   const user = state.users.find(u => u.id === state.currentUserId);
-  const result = canTransition(sched.status, 'approve', user.role, {});
-  if (!result.ok) { showToast(result.message ?? result.code, 'error'); return; }
-  const newStatus = nextStatus(sched.status, 'approve');
-  const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
-  setState({ ...state, schedules: updated });
-  addLogEntry('APPROVE', state.currentUserId, `已同意`);
-  showToast(`已批准`, 'success');
+
+  const check = canTransition(sched.status, 'approve', user.role, {});
+  if (!check.ok) { showToast(check.message ?? check.code, 'error'); return; }
+
+  if (isAPIModeCheck()) {
+    try {
+      const result = await approveSchedule(sched.id, state.currentUserId);
+      mergeAPIData(flattenScheduleResult(result.schedule));
+      addLogEntry('APPROVE', state.currentUserId, `已同意`);
+      showToast(`已批准`, 'success');
+    } catch (e) {
+      showToast(`审批失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
+    }
+  } else {
+    const newStatus = nextStatus(sched.status, 'approve');
+    const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
+    setState({ ...state, schedules: updated });
+    addLogEntry('APPROVE', state.currentUserId, `已同意`);
+    showToast(`已批准`, 'success');
+  }
 }
 
-function handleReject(reason) {
+async function handleReject(reason) {
   const state = getState();
   const sched = _currentSchedule();
   if (!sched) return;
   const user = state.users.find(u => u.id === state.currentUserId);
-  const result = canTransition(sched.status, 'reject', user.role, { reason });
-  if (!result.ok) { showToast(result.message ?? result.code, 'error'); return; }
-  const newStatus = nextStatus(sched.status, 'reject');
-  const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus, rejectReason: reason } : s);
-  setState({ ...state, schedules: updated });
-  addLogEntry('REJECT', state.currentUserId, reason ? `理由：${reason}` : '已拒绝');
-  showToast(`已拒绝：${reason}`, 'warning');
+
+  const check = canTransition(sched.status, 'reject', user.role, { reason });
+  if (!check.ok) { showToast(check.message ?? check.code, 'error'); return; }
+
+  if (isAPIModeCheck()) {
+    try {
+      const result = await rejectSchedule(sched.id, reason, state.currentUserId);
+      mergeAPIData(flattenScheduleResult(result.schedule));
+      addLogEntry('REJECT', state.currentUserId, reason ? `理由：${reason}` : '已拒绝');
+      showToast(`已拒绝：${reason}`, 'warning');
+    } catch (e) {
+      showToast(`拒绝失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
+    }
+  } else {
+    const newStatus = nextStatus(sched.status, 'reject');
+    const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus, rejectReason: reason } : s);
+    setState({ ...state, schedules: updated });
+    addLogEntry('REJECT', state.currentUserId, reason ? `理由：${reason}` : '已拒绝');
+    showToast(`已拒绝：${reason}`, 'warning');
+  }
 }
 
-function handleResched() {
+async function handleResched() {
   const state = getState();
   const sched = _currentSchedule();
   if (!sched) return;
   const user = state.users.find(u => u.id === state.currentUserId);
-  const result = canTransition(sched.status, 'reschedule', user.role, {});
-  if (!result.ok) { showToast(result.message ?? result.code, 'error'); return; }
-  const newStatus = nextStatus(sched.status, 'reschedule');
-  const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
-  setState({ ...state, schedules: updated });
-  addLogEntry('RESCHED', state.currentUserId, `PM 发起重新排期`);
-  showToast(`已发起重新排期，组长可重新编辑`, 'warning');
+
+  const check = canTransition(sched.status, 'reschedule', user.role, {});
+  if (!check.ok) { showToast(check.message ?? check.code, 'error'); return; }
+
+  if (isAPIModeCheck()) {
+    try {
+      const result = await reschedule(sched.id, state.currentUserId);
+      mergeAPIData(flattenScheduleResult(result.schedule));
+      addLogEntry('RESCHED', state.currentUserId, `PM 发起重新排期`);
+      showToast(`已发起重新排期，组长可重新编辑`, 'warning');
+    } catch (e) {
+      showToast(`重新排期失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
+    }
+  } else {
+    const newStatus = nextStatus(sched.status, 'reschedule');
+    const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
+    setState({ ...state, schedules: updated });
+    addLogEntry('RESCHED', state.currentUserId, `PM 发起重新排期`);
+    showToast(`已发起重新排期，组长可重新编辑`, 'warning');
+  }
 }
 
-function handleMasterAddRow() {
+async function handleMasterAddRow() {
   const state = getState();
-  // Add a new MASTER task to the first group's schedule
-  const targetGroupId = state.schedules[0]?.groupId;
-  const targetSchedId = state.schedules[0]?.id;
-  if (!targetSchedId) return;
+  const sched = _currentSchedule();
+  if (!sched) return;
 
-  let _rowId = Date.now();
-  const newTask = {
-    id: String(++_rowId),
-    scheduleId: targetSchedId,
-    orderIndex: state.tasks.filter(t => t.scheduleId === targetSchedId).length,
+  const iter = state.iterations.find(i => i.id === state.activeIterationId);
+  const taskData = {
     name: '新任务',
     ownerId: null,
-    startDate: state.iterations.find(i => i.id === state.activeIterationId)?.startDate ?? '',
+    startDate: iter?.startDate ?? '',
     endDate: '',
     durationDays: 1,
-    dependencyTaskId: null,
-    source: 'MASTER',
-    note: '',
   };
-  setState({ ...state, tasks: [...state.tasks, newTask] });
-  addLogEntry('MASTER_ADD', state.currentUserId, `新增总表行：${newTask.name}`);
-  showToast(`已新增总表行`, 'success');
+
+  if (isAPIModeCheck()) {
+    try {
+      const result = await addMasterRow(state.activeIterationId, sched.id, taskData, state.currentUserId);
+      const flat = flattenScheduleResult(result.task);
+      mergeAPIData({ tasks: flat.tasks });
+      addLogEntry('MASTER_ADD', state.currentUserId, `新增总表行：${result.task.name}`);
+      showToast(`已新增总表行`, 'success');
+    } catch (e) {
+      showToast(`新增行失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
+    }
+  } else {
+    let _rowId = Date.now();
+    const newTask = {
+      id: String(++_rowId),
+      scheduleId: sched.id,
+      orderIndex: state.tasks.filter(t => t.scheduleId === sched.id).length,
+      ...taskData,
+      dependencyTaskId: null,
+      source: 'MASTER',
+      note: '',
+    };
+    setState({ ...state, tasks: [...state.tasks, newTask] });
+    addLogEntry('MASTER_ADD', state.currentUserId, `新增总表行：${newTask.name}`);
+    showToast(`已新增总表行`, 'success');
+  }
 }
 
-function handleMasterDeleteRow(taskId) {
+async function handleMasterDeleteRow(taskId) {
   const state = getState();
   const task = state.tasks.find(t => t.id === taskId);
   if (!task) return;
   if (task.source !== 'MASTER') {
     showToast('系统同步行不可删除', 'error'); return;
   }
-  setState({ ...state, tasks: state.tasks.filter(t => t.id !== taskId) });
-  addLogEntry('MASTER_DEL', state.currentUserId, `删除总表行：${task.name}`);
-  showToast(`已删除`, 'info');
+
+  if (isAPIModeCheck()) {
+    try {
+      await deleteMasterRow(taskId, state.currentUserId);
+      mergeAPIData({ tasks: state.tasks.filter(t => t.id !== taskId) });
+      addLogEntry('MASTER_DEL', state.currentUserId, `删除总表行：${task.name}`);
+      showToast(`已删除`, 'info');
+    } catch (e) {
+      showToast(`删除失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
+    }
+  } else {
+    setState({ ...state, tasks: state.tasks.filter(t => t.id !== taskId) });
+    addLogEntry('MASTER_DEL', state.currentUserId, `删除总表行：${task.name}`);
+    showToast(`已删除`, 'info');
+  }
 }
 
 function _currentSchedule() {

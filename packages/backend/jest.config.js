@@ -12,6 +12,9 @@ export default {
       useESM: true,
       experimentalDecorators: true,
       emitDecoratorMetadata: true,
+      diagnostics: {
+        ignoreCodes: [151002],
+      },
     }],
   },
   testMatch: ['**/*.spec.ts'],

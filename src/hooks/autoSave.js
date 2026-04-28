@@ -1,7 +1,8 @@
 // src/hooks/autoSave.js
-// 30s 防抖自动保存 hook — 只写 localStorage，不调 setState，不打扰用户编辑
+// 30s 防抖自动保存 hook — localStorage 或 API 模式
 
-import { getState } from '../store.js';
+import { getState, isAPIMode, mergeAPIData } from '../store.js';
+import { saveDraft, flattenScheduleResult } from '../api/client.js';
 
 const DEBOUNCE_MS = 30_000; // 30 seconds
 
@@ -26,18 +27,36 @@ export function cancelAutoSave() {
   }
 }
 
-function triggerSave(onSave) {
+async function triggerSave(onSave) {
   const state = getState();
   // Version check is O(1) — skip serialisation when nothing changed since last save
   if (state._version === _lastSavedVersion) return;
   _lastSavedVersion = state._version;
 
-  try {
-    const serialized = JSON.stringify(state);
-    localStorage.setItem('oa.state.v1', serialized);
-    if (onSave) onSave();
-  } catch (e) {
-    console.error('[autoSave] failed:', e);
+  if (isAPIMode()) {
+    const sched = state.schedules.find(
+      s => s.iterationId === state.activeIterationId && s.groupId === state.activeGroupId
+    );
+    if (!sched) return;
+    const schedTasks = state.tasks.filter(t => t.scheduleId === sched.id);
+    try {
+      const result = await saveDraft(sched.id, schedTasks, sched.version, state.currentUserId);
+      if (result.ok) {
+        mergeAPIData(flattenScheduleResult(result.schedule));
+        onSave?.();
+      }
+    } catch (e) {
+      console.error('[autoSave] API failed:', e);
+    }
+  } else {
+    // localStorage 模式
+    try {
+      const serialized = JSON.stringify(state);
+      localStorage.setItem('oa.state.v1', serialized);
+      if (onSave) onSave();
+    } catch (e) {
+      console.error('[autoSave] failed:', e);
+    }
   }
   _timer = null;
 }

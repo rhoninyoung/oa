@@ -26,4 +26,4 @@ RUN pnpm --filter @oa-mvp/shared run build
 RUN pnpm --filter @oa-mvp/backend run build
 
 EXPOSE 3000
-CMD ["node", "packages/backend/dist/backend/src/main.js"]
+CMD ["node", "packages/backend/dist/src/main.js"]
