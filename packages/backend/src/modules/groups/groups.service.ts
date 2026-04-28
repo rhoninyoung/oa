@@ -2,39 +2,39 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service.js';
 
 @Injectable()
-export class ProjectsService {
+export class GroupsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll() {
-    return this.prisma.project.findMany({
-      include: { iterations: { include: { schedules: true } } },
+    return this.prisma.group.findMany({
+      include: { members: true },
       orderBy: { name: 'asc' },
     });
   }
 
   async findOne(id: string) {
-    const project = await this.prisma.project.findUnique({
+    const group = await this.prisma.group.findUnique({
       where: { id },
-      include: { iterations: { include: { schedules: true } } },
+      include: { members: true },
     });
-    if (!project) throw new NotFoundException(`Project ${id} not found`);
-    return project;
+    if (!group) throw new NotFoundException(`Group ${id} not found`);
+    return group;
   }
 
   async create(data: { name: string }) {
-    return this.prisma.project.create({
+    return this.prisma.group.create({
       data: { name: data.name },
     });
   }
 
   async update(id: string, data: { name?: string }) {
-    return this.prisma.project.update({
+    return this.prisma.group.update({
       where: { id },
       data: { name: data.name },
     });
   }
 
   async remove(id: string) {
-    return this.prisma.project.delete({ where: { id } });
+    return this.prisma.group.delete({ where: { id } });
   }
 }

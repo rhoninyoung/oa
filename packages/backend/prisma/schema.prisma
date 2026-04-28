@@ -108,6 +108,17 @@ model NotificationOutbox {
   @@map("notification_outbox")
 }
 
+model Holiday {
+  id          String   @id @default(cuid())
+  date        String   @unique  // YYYY-MM-DD format
+  name        String            // Holiday name (e.g., "元旦", "春节")
+  lunarDate   String?           // Lunar calendar date (e.g., "正月初一")
+  year        Int              // Year for indexing
+
+  @@unique([year, date])
+  @@map("holidays")
+}
+
 enum Role {
   GROUP_LEADER
   PROJECT_MANAGER
