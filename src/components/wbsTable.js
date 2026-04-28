@@ -5,7 +5,7 @@ import { getState, setState } from '../store.js';
 import { addLogEntry } from './activityLog.js';
 import { showToast } from './toast.js';
 import { pushUndo, popUndo, popRedo } from '../domain/tableOps.js';
-import { canDeleteRow } from '../domain/permissions.js';
+import { canDeleteRow, getFieldPermissions } from '../domain/permissions.js';
 import { checkDependencyCycle, propagateFinishChange } from '../domain/dependency.js';
 import { isWeekend, addWorkDays } from '../domain/calendar.js';
 import { renderSearchFilter } from './searchFilter.js';
@@ -93,12 +93,18 @@ export function renderWBSTable(schedule, tasks) {
       : null;
     const depName = depTask ? depTask.name : '';
     const isMasterRow = task.source === 'MASTER';
-    const readonly = !canEdit || isMasterRow;
+    const user = users.find(u => u.id === currentUserId);
+
+    // Compute field-level permissions
+    const { readonlyFields } = getFieldPermissions(task, schedule, role, user) ?? {};
+    const rowReadonly = !canEdit || isMasterRow;
+    const isFieldReadonly = (field) => rowReadonly || (readonlyFields?.has(field) ?? false);
 
     return `<tr data-task-id="${task.id}" data-row-index="${ri}" draggable="true">${
       COLUMNS.map((col, ci) => {
         const sticky = ci < STICKY_COLS ? ' sticky' : '';
-        const cls = readonly ? '' : 'cell-editable';
+        const fieldRO = isFieldReadonly(col.key);
+        const cls = fieldRO ? '' : 'cell-editable';
         const style = `width:${col.width}px;min-width:${col.width}px`;
 
         switch (col.key) {
@@ -108,7 +114,7 @@ export function renderWBSTable(schedule, tasks) {
             return `<td class="${sticky} ${cls}" data-col="name" style="${style}">${task.name ?? ''}</td>`;
           case 'ownerId': {
             const owner = users.find(u => u.id === task.ownerId);
-            if (!readonly && col.type === 'select') {
+            if (!fieldRO && col.type === 'select') {
               return `<td class="${sticky} ${cls}" data-col="ownerId" style="${style}">
                 <select class="cell-select" data-task-id="${task.id}" style="border:none;width:100%;background:transparent;font-size:13px">
                   <option value="">—</option>
@@ -119,26 +125,26 @@ export function renderWBSTable(schedule, tasks) {
           }
           case 'startDate':
             return `<td class="${sticky} ${cls}" data-col="startDate" style="${style}">
-              ${readonly
+              ${fieldRO
                 ? (task.startDate ?? '')
                 : `<input type="date" class="cell-input" data-col="startDate" data-task-id="${task.id}" value="${task.startDate ?? ''}" style="border:none;width:100%">`}
             </td>`;
           case 'endDate':
             return `<td class="${sticky} ${cls}" data-col="endDate" style="${style}">
-              ${readonly
+              ${fieldRO
                 ? (task.endDate ?? '')
                 : `<input type="date" class="cell-input" data-col="endDate" data-task-id="${task.id}" value="${task.endDate ?? ''}" style="border:none;width:100%">`}
             </td>`;
           case 'durationDays':
             return `<td class="${sticky} ${cls}" data-col="durationDays" style="${style}">
-              ${readonly
+              ${fieldRO
                 ? (task.durationDays ?? '')
                 : `<input type="number" min="0" class="cell-input" data-col="durationDays" data-task-id="${task.id}" value="${task.durationDays ?? 1}" style="border:none;width:100%">`}
             </td>`;
           case 'dep':
             return `<td class="${sticky}" data-col="dep" style="${style}">
               ${depName ? `<span class="dep-arrow">← ${depName}</span>` : '<span class="text-muted">—</span>'}
-              ${!readonly ? `<button class="btn-pick-dep" data-task-id="${task.id}" style="margin-left:4px;font-size:11px;padding:1px 5px;cursor:pointer">选</button>` : ''}
+              ${!fieldRO ? `<button class="btn-pick-dep" data-task-id="${task.id}" style="margin-left:4px;font-size:11px;padding:1px 5px;cursor:pointer">选</button>` : ''}
             </td>`;
           case 'note':
             return `<td class="${sticky} ${cls}" data-col="note" style="${style}">${task.note?.replace(/\n/g, '<br>') ?? ''}</td>`;

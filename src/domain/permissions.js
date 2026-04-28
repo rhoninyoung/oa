@@ -69,3 +69,59 @@ export function canDeleteRow(task, schedule) {
   }
   return { ok: false, code: 'UNKNOWN_SOURCE' };
 }
+
+/**
+ * Field-level edit permissions per task/schedule/role context.
+ * Returns a Set of editable field names, or null if all fields editable.
+ *
+ * @param {object} task - { source }
+ * @param {object} schedule - { status, groupId }
+ * @param {Role} role
+ * @param {object} user - { groupId }
+ * @returns {{ok: boolean, readonlyFields?: Set<string>}}
+ *
+ * Rules (per PDF §9 字段级权限):
+ * - REVIEWING status: GL cannot edit any task fields (readonly all)
+ * - APPROVED status: GL cannot edit any task fields
+ * - PENDING/REJECTED: GL can edit GROUP tasks in their own group
+ * - PM in MASTER view: can edit MASTER tasks
+ * - PM in GROUP view: read-only (use MASTER view to edit)
+ */
+export function getFieldPermissions(task, schedule, role, user) {
+  const isOwnGroup = schedule.groupId === user.groupId;
+  const isPM = role === 'PROJECT_MANAGER';
+  const isGL = role === 'GROUP_LEADER';
+
+  // PM in GROUP view (not MASTER view) — all fields read-only
+  if (isPM && task.source === 'GROUP') {
+    return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note']) };
+  }
+
+  // MASTER tasks — PM can always edit
+  if (task.source === 'MASTER' && isPM) {
+    return { ok: true, readonlyFields: null };
+  }
+
+  // GROUP tasks
+  if (task.source === 'GROUP') {
+    if (isPM) {
+      // PM sees GROUP tasks as read-only in GROUP view
+      return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note']) };
+    }
+
+    if (isGL) {
+      if (!isOwnGroup) {
+        // GL viewing another group's schedule — all read-only
+        return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note']) };
+      }
+      if (schedule.status === 'REVIEWING' || schedule.status === 'APPROVED') {
+        // REVIEWING/APPROVED: GL cannot edit fields while under review
+        return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note']) };
+      }
+      // PENDING/REJECTED: GL can edit
+      return { ok: true, readonlyFields: null };
+    }
+  }
+
+  return { ok: true, readonlyFields: null };
+}
