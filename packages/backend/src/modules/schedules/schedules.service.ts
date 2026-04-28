@@ -88,9 +88,15 @@ export class SchedulesService {
     action: 'submit' | 'withdraw' | 'approve' | 'reject' | 'reschedule',
     ctx: { reason?: string },
   ) {
-    const schedule = await this.prisma.groupSchedule.findUnique({ where: { id: scheduleId } });
+    const schedule = await this.prisma.groupSchedule.findUnique({
+      where: { id: scheduleId },
+      include: {
+        iteration: { include: { project: true } },
+      },
+    });
     if (!schedule) throw new NotFoundException('Schedule not found');
 
+    const group = await this.prisma.group.findUnique({ where: { id: schedule.groupId } });
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
@@ -115,13 +121,61 @@ export class SchedulesService {
       include: { tasks: { orderBy: { orderIndex: 'asc' } } },
     });
 
-    // Emit outbox events
+    // Build notification payload
+    const notificationPayload = {
+      projectName: schedule.iteration.project.name,
+      iterationName: schedule.iteration.name,
+      groupName: group?.name ?? schedule.groupId,
+      actorName: user.name,
+      action,
+      rejectReason: ctx.reason,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Emit outbox events for state transitions
     if (action === 'submit') {
-      await this.outbox.emit(scheduleId, 'SCHEDULE_SUBMITTED', { iterationId: schedule.iterationId });
+      // Notify PMs that a schedule is submitted for review
+      const pms = await this.prisma.user.findMany({ where: { role: 'PROJECT_MANAGER' } });
+      for (const pm of pms) {
+        await this.outbox.emit(scheduleId, 'EMAIL', {
+          to: pm.email || `${pm.id}@example.com`,
+          ...notificationPayload,
+        });
+        await this.outbox.emit(scheduleId, 'DINGTALK', {
+          webhookUrl: process.env.DINGTALK_WEBHOOK_URL,
+          ...notificationPayload,
+        });
+      }
     } else if (action === 'approve') {
-      await this.outbox.emit(scheduleId, 'SCHEDULE_APPROVED', {});
-    } else if (action === 'reschedule') {
-      await this.outbox.emit(scheduleId, 'RESCHEDULE', {});
+      // Notify the GL who submitted
+      const gls = await this.prisma.user.findMany({
+        where: { role: 'GROUP_LEADER', groupId: schedule.groupId },
+      });
+      for (const gl of gls) {
+        await this.outbox.emit(scheduleId, 'EMAIL', {
+          to: gl.email || `${gl.id}@example.com`,
+          ...notificationPayload,
+        });
+        await this.outbox.emit(scheduleId, 'DINGTALK', {
+          webhookUrl: process.env.DINGTALK_WEBHOOK_URL,
+          ...notificationPayload,
+        });
+      }
+    } else if (action === 'reject') {
+      // Notify the GL who submitted
+      const gls = await this.prisma.user.findMany({
+        where: { role: 'GROUP_LEADER', groupId: schedule.groupId },
+      });
+      for (const gl of gls) {
+        await this.outbox.emit(scheduleId, 'EMAIL', {
+          to: gl.email || `${gl.id}@example.com`,
+          ...notificationPayload,
+        });
+        await this.outbox.emit(scheduleId, 'DINGTALK', {
+          webhookUrl: process.env.DINGTALK_WEBHOOK_URL,
+          ...notificationPayload,
+        });
+      }
     }
 
     return { ok: true, schedule: updated };

@@ -27,6 +27,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "nodemailer": "^8.0.7",
     "xlsx": "^0.18.5"
   }
 }

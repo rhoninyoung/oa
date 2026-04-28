@@ -17,6 +17,10 @@ function createMockPrisma(overrides = {}) {
     },
     user: {
       findUnique: jest.fn() as any,
+      findMany: jest.fn() as any,
+    },
+    group: {
+      findUnique: jest.fn() as any,
     },
     ...overrides,
   };
@@ -28,8 +32,10 @@ function createMockOutbox() {
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-const FIXTURE_USER_GL = { id: 'u_gl1', name: '张三', role: 'GROUP_LEADER', groupId: 'g1' };
-const FIXTURE_USER_PM = { id: 'u_pm1', name: '李四', role: 'PROJECT_MANAGER', groupId: null };
+const FIXTURE_USER_GL = { id: 'u_gl1', name: '张三', role: 'GROUP_LEADER', groupId: 'g1', email: 'zhangsan@example.com' };
+const FIXTURE_USER_PM = { id: 'u_pm1', name: '李四', role: 'PROJECT_MANAGER', groupId: null, email: 'lisi@example.com' };
+const FIXTURE_GROUP = { id: 'g1', name: '前端组' };
+const FIXTURE_ITERATION = { id: 'iter1', name: '迭代1', projectId: 'p1', project: { name: 'OA项目' } };
 const FIXTURE_SCHEDULE = (status = 'PENDING', version = 1) => ({
   id: 'sch1',
   iterationId: 'iter1',
@@ -37,6 +43,7 @@ const FIXTURE_SCHEDULE = (status = 'PENDING', version = 1) => ({
   status,
   version,
   rejectReason: null,
+  iteration: FIXTURE_ITERATION,
 });
 const FIXTURE_TASKS = [
   { id: 't1', scheduleId: 'sch1', orderIndex: 0, name: '任务A', ownerId: 'u1', startDate: null, endDate: null, durationDays: 3, dependencyTaskId: null, source: 'GROUP', note: '' },
@@ -54,7 +61,9 @@ describe('SchedulesService.transition()', () => {
       const svc = new SchedulesService(prisma as any, outbox as any);
 
       prisma.groupSchedule.findUnique.mockResolvedValue(FIXTURE_SCHEDULE('PENDING', 1));
+      prisma.group.findUnique.mockResolvedValue(FIXTURE_GROUP);
       prisma.user.findUnique.mockResolvedValue(FIXTURE_USER_GL);
+      prisma.user.findMany.mockResolvedValue([FIXTURE_USER_PM]);
       prisma.task.findMany.mockResolvedValue(FIXTURE_TASKS);
       prisma.groupSchedule.update.mockResolvedValue({
         ...FIXTURE_SCHEDULE('REVIEWING', 2),
@@ -68,7 +77,10 @@ describe('SchedulesService.transition()', () => {
       expect(prisma.groupSchedule.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'sch1' }, data: expect.objectContaining({ status: 'REVIEWING' }) }),
       );
-      expect(outbox.emit).toHaveBeenCalledWith('sch1', 'SCHEDULE_SUBMITTED', { iterationId: 'iter1' });
+      // Submit emits EMAIL and DINGTALK notifications to PMs
+      expect(outbox.emit).toHaveBeenCalled();
+      const emitCalls = outbox.emit.mock.calls;
+      expect(emitCalls.some((c: any[]) => c[1] === 'EMAIL')).toBe(true);
     });
   });
 
@@ -79,6 +91,7 @@ describe('SchedulesService.transition()', () => {
       const svc = new SchedulesService(prisma as any, outbox as any);
 
       prisma.groupSchedule.findUnique.mockResolvedValue(FIXTURE_SCHEDULE('REVIEWING', 2));
+      prisma.group.findUnique.mockResolvedValue(FIXTURE_GROUP);
       prisma.user.findUnique.mockResolvedValue(FIXTURE_USER_GL);
       prisma.task.findMany.mockResolvedValue(FIXTURE_TASKS);
       prisma.groupSchedule.update.mockResolvedValue({
@@ -100,7 +113,9 @@ describe('SchedulesService.transition()', () => {
       const svc = new SchedulesService(prisma as any, outbox as any);
 
       prisma.groupSchedule.findUnique.mockResolvedValue(FIXTURE_SCHEDULE('REVIEWING', 2));
+      prisma.group.findUnique.mockResolvedValue(FIXTURE_GROUP);
       prisma.user.findUnique.mockResolvedValue(FIXTURE_USER_PM);
+      prisma.user.findMany.mockResolvedValue([FIXTURE_USER_GL]);
       prisma.task.findMany.mockResolvedValue(FIXTURE_TASKS);
       prisma.groupSchedule.update.mockResolvedValue({
         ...FIXTURE_SCHEDULE('APPROVED', 3),
@@ -111,7 +126,10 @@ describe('SchedulesService.transition()', () => {
 
       expect(result.ok).toBe(true);
       expect(result.schedule.status).toBe('APPROVED');
-      expect(outbox.emit).toHaveBeenCalledWith('sch1', 'SCHEDULE_APPROVED', {});
+      // Approve emits EMAIL and DINGTALK notifications to GLs
+      expect(outbox.emit).toHaveBeenCalled();
+      const emitCalls = outbox.emit.mock.calls;
+      expect(emitCalls.some((c: any[]) => c[1] === 'EMAIL')).toBe(true);
     });
   });
 
@@ -122,7 +140,9 @@ describe('SchedulesService.transition()', () => {
       const svc = new SchedulesService(prisma as any, outbox as any);
 
       prisma.groupSchedule.findUnique.mockResolvedValue(FIXTURE_SCHEDULE('REVIEWING', 2));
+      prisma.group.findUnique.mockResolvedValue(FIXTURE_GROUP);
       prisma.user.findUnique.mockResolvedValue(FIXTURE_USER_PM);
+      prisma.user.findMany.mockResolvedValue([FIXTURE_USER_GL]);
       prisma.task.findMany.mockResolvedValue(FIXTURE_TASKS);
       prisma.groupSchedule.update.mockResolvedValue({
         ...FIXTURE_SCHEDULE('REJECTED', 3),
@@ -145,7 +165,9 @@ describe('SchedulesService.transition()', () => {
       const svc = new SchedulesService(prisma as any, outbox as any);
 
       prisma.groupSchedule.findUnique.mockResolvedValue(FIXTURE_SCHEDULE('REVIEWING', 2));
+      prisma.group.findUnique.mockResolvedValue(FIXTURE_GROUP);
       prisma.user.findUnique.mockResolvedValue(FIXTURE_USER_PM);
+      prisma.user.findMany.mockResolvedValue([FIXTURE_USER_GL]);
       prisma.task.findMany.mockResolvedValue(FIXTURE_TASKS);
       // Simulate canTransition returning ok=false by making update throw
       prisma.groupSchedule.update.mockRejectedValue(new BadRequestException({ code: 'REASON_INVALID', message: '拒绝理由不能为空' }));
@@ -172,6 +194,7 @@ describe('SchedulesService.transition()', () => {
       const svc = new SchedulesService(prisma as any, outbox as any);
 
       prisma.groupSchedule.findUnique.mockResolvedValue(FIXTURE_SCHEDULE('PENDING'));
+      prisma.group.findUnique.mockResolvedValue(FIXTURE_GROUP);
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(svc.submit('sch1', 'ghost')).rejects.toThrow(NotFoundException);
