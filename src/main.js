@@ -2,6 +2,7 @@
 import { getState, setState, subscribe, exportState, importState, isAPIMode, initFromAPI, mergeAPIData } from './store.js';
 import { buildSeed } from './seed.js';
 import { downloadJSON, pickJSONFile } from './io/importExport.js';
+import { exportScheduleToExcel, exportMasterViewToExcel, importScheduleFromExcel } from './io/excel.js';
 import { renderRoleSwitcher } from './components/roleSwitcher.js';
 import { renderProjectTree } from './components/projectTree.js';
 import { renderWBSTable, initTableKeyboard, isCellEditing } from './components/wbsTable.js';
@@ -483,6 +484,49 @@ function setupGlobalEvents() {
     const result = importState(content);
     if (!result.ok) { showToast('导入失败：' + result.error, 'error'); return; }
     showToast('已从 JSON 恢复', 'success');
+  });
+
+  // Excel Export
+  document.getElementById('btn-export-excel').addEventListener('click', () => {
+    const state = getState();
+    if (state.viewMode === 'MASTER') {
+      exportMasterViewToExcel();
+    } else {
+      exportScheduleToExcel();
+    }
+    showToast('已导出 Excel 文件', 'success');
+  });
+
+  // Excel Import
+  document.getElementById('btn-import-excel').addEventListener('click', async () => {
+    const input = document.getElementById('file-import-excel');
+    const file = input.files?.[0];
+    if (!file) { input.click(); return; }
+
+    const buffer = await file.arrayBuffer();
+    const result = importScheduleFromExcel(buffer);
+
+    if (!result.ok) {
+      showToast('导入失败：' + result.error, 'error');
+      input.value = '';
+      return;
+    }
+
+    const state = getState();
+    const sched = state.schedules.find(
+      s => s.iterationId === state.activeIterationId && s.groupId === state.activeGroupId
+    );
+    if (!sched) {
+      showToast('当前无排期数据', 'error');
+      input.value = '';
+      return;
+    }
+
+    // 替换当前 schedule 的任务
+    const otherTasks = state.tasks.filter(t => t.scheduleId !== sched.id);
+    setState({ tasks: [...otherTasks, ...result.tasks] });
+    showToast(`已导入 ${result.tasks.length} 条任务`, 'success');
+    input.value = '';
   });
 
   // Ctrl+S trigger

@@ -25,5 +25,8 @@
     "prisma": "^5.22.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
   }
 }

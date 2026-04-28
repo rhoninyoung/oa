@@ -13,7 +13,10 @@
     <div class="header-actions">
       <button id="btn-export" title="导出 JSON 备份">导出</button>
       <button id="btn-import" title="从 JSON 恢复">导入</button>
+      <button id="btn-export-excel" title="导出 Excel">导出Excel</button>
+      <button id="btn-import-excel" title="从 Excel 导入">导入Excel</button>
       <input type="file" id="file-import" accept=".json" style="display:none" />
+      <input type="file" id="file-import-excel" accept=".xlsx,.xls" style="display:none" />
     </div>
   </header>
 
@@ -52,6 +55,8 @@
   <!-- Toast 通知 -->
   <div id="toast-container"></div>
 
+  <!-- SheetJS for Excel import/export -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>
