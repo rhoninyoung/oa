@@ -177,6 +177,100 @@ describe('SchedulesService.transition()', () => {
     });
   });
 
+  // BUG-P8-04: submit → outbox.emit called with EMAIL to all PMs
+  test('submit emits EMAIL + DINGTALK to PMs', async () => {
+    const prisma = createMockPrisma();
+    const outbox = createMockOutbox();
+    const svc = new SchedulesService(prisma as any, outbox as any);
+
+    prisma.groupSchedule.findUnique.mockResolvedValue(FIXTURE_SCHEDULE('PENDING', 1));
+    prisma.group.findUnique.mockResolvedValue(FIXTURE_GROUP);
+    prisma.user.findUnique.mockResolvedValue(FIXTURE_USER_GL);
+    prisma.user.findMany.mockResolvedValue([FIXTURE_USER_PM]);
+    prisma.task.findMany.mockResolvedValue(FIXTURE_TASKS);
+    prisma.groupSchedule.update.mockResolvedValue({
+      ...FIXTURE_SCHEDULE('REVIEWING', 2),
+      tasks: FIXTURE_TASKS,
+    });
+
+    await svc.submit('sch1', 'u_gl1');
+
+    const emitCalls = outbox.emit.mock.calls;
+    const emailCalls = emitCalls.filter((c: any[]) => c[1] === 'EMAIL');
+    const dingtalkCalls = emitCalls.filter((c: any[]) => c[1] === 'DINGTALK');
+    expect(emailCalls.length).toBeGreaterThan(0);
+    expect(dingtalkCalls.length).toBeGreaterThan(0);
+    expect(emailCalls[0][2].to).toBe(FIXTURE_USER_PM.email);
+  });
+
+  // BUG-P8-05: approve → outbox.emit called with EMAIL to GL
+  test('approve emits EMAIL + DINGTALK to GLs in own group', async () => {
+    const prisma = createMockPrisma();
+    const outbox = createMockOutbox();
+    const svc = new SchedulesService(prisma as any, outbox as any);
+
+    prisma.groupSchedule.findUnique.mockResolvedValue(FIXTURE_SCHEDULE('REVIEWING', 2));
+    prisma.group.findUnique.mockResolvedValue(FIXTURE_GROUP);
+    prisma.user.findUnique.mockResolvedValue(FIXTURE_USER_PM);
+    prisma.user.findMany.mockResolvedValue([FIXTURE_USER_GL]);
+    prisma.task.findMany.mockResolvedValue(FIXTURE_TASKS);
+    prisma.groupSchedule.update.mockResolvedValue({
+      ...FIXTURE_SCHEDULE('APPROVED', 3),
+      tasks: FIXTURE_TASKS,
+    });
+
+    await svc.approve('sch1', 'u_pm1');
+
+    const emitCalls = outbox.emit.mock.calls;
+    const emailCalls = emitCalls.filter((c: any[]) => c[1] === 'EMAIL');
+    expect(emailCalls.length).toBeGreaterThan(0);
+    expect(emailCalls[0][2].to).toBe(FIXTURE_USER_GL.email);
+  });
+
+  // BUG-P8-06: reject → outbox.emit called with rejectReason
+  test('reject emits EMAIL with rejectReason to GLs', async () => {
+    const prisma = createMockPrisma();
+    const outbox = createMockOutbox();
+    const svc = new SchedulesService(prisma as any, outbox as any);
+
+    prisma.groupSchedule.findUnique.mockResolvedValue(FIXTURE_SCHEDULE('REVIEWING', 2));
+    prisma.group.findUnique.mockResolvedValue(FIXTURE_GROUP);
+    prisma.user.findUnique.mockResolvedValue(FIXTURE_USER_PM);
+    prisma.user.findMany.mockResolvedValue([FIXTURE_USER_GL]);
+    prisma.task.findMany.mockResolvedValue(FIXTURE_TASKS);
+    prisma.groupSchedule.update.mockResolvedValue({
+      ...FIXTURE_SCHEDULE('REJECTED', 3),
+      rejectReason: '排期不合理',
+      tasks: FIXTURE_TASKS,
+    });
+
+    await svc.reject('sch1', 'u_pm1', '排期不合理');
+
+    const emailCalls = outbox.emit.mock.calls.filter((c: any[]) => c[1] === 'EMAIL');
+    expect(emailCalls[0][2].rejectReason).toBe('排期不合理');
+  });
+
+  // BUG-P8-07: No PMs in system → submit does not throw (no one to notify)
+  test('submit with no PMs → no outbox emit, no throw', async () => {
+    const prisma = createMockPrisma();
+    const outbox = createMockOutbox();
+    const svc = new SchedulesService(prisma as any, outbox as any);
+
+    prisma.groupSchedule.findUnique.mockResolvedValue(FIXTURE_SCHEDULE('PENDING', 1));
+    prisma.group.findUnique.mockResolvedValue(FIXTURE_GROUP);
+    prisma.user.findUnique.mockResolvedValue(FIXTURE_USER_GL);
+    prisma.user.findMany.mockResolvedValue([]); // no PMs
+    prisma.task.findMany.mockResolvedValue(FIXTURE_TASKS);
+    prisma.groupSchedule.update.mockResolvedValue({
+      ...FIXTURE_SCHEDULE('REVIEWING', 2),
+      tasks: FIXTURE_TASKS,
+    });
+
+    const result = await svc.submit('sch1', 'u_gl1');
+    expect(result.ok).toBe(true);
+    expect(outbox.emit).not.toHaveBeenCalled();
+  });
+
   describe('error cases', () => {
     test('schedule not found → NotFoundException', async () => {
       const prisma = createMockPrisma();
