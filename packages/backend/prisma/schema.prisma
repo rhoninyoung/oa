@@ -78,6 +78,7 @@ model Task {
   dependencyTaskId String?
   source           TaskSource @default(GROUP)
   note             String?
+  progressPercent  Int       @default(0) @map("progress_percent")
 
   @@map("tasks")
 }

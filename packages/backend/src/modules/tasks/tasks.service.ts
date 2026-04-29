@@ -123,4 +123,18 @@ export class TasksService {
 
     return { ok: true, changes: Object.fromEntries(changes) };
   }
+
+  async updateProgress(taskId: string, progress: number, userId: string) {
+    if (progress < 0 || progress > 100) {
+      throw new BadRequestException({ code: 'PROGRESS_OUT_OF_RANGE', message: '进度值必须在 0-100 之间' });
+    }
+    const task = await this.prisma.task.findUnique({ where: { id: taskId } });
+    if (!task) throw new NotFoundException('Task not found');
+
+    const updated = await this.prisma.task.update({
+      where: { id: taskId },
+      data: { progressPercent: progress },
+    });
+    return { ok: true, task: updated };
+  }
 }

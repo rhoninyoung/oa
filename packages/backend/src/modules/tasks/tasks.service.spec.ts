@@ -228,4 +228,85 @@ describe('TasksService', () => {
       expect(result.ok).toBe(true);
     });
   });
+
+  // TP-01: updateProgress — valid range 0-100
+  describe('updateProgress', () => {
+    test('valid progress 0 → ok', async () => {
+      const prisma = createMockPrisma();
+      const outbox = createMockOutbox();
+      const svc = new TasksService(prisma as any, outbox as any);
+
+      prisma.task.findUnique.mockResolvedValue(FIXTURE_TASK_GROUP());
+      prisma.task.update.mockResolvedValue({ ...FIXTURE_TASK_GROUP(), progressPercent: 0 });
+
+      const result = await svc.updateProgress('t1', 0, 'u1');
+
+      expect(result.ok).toBe(true);
+      expect(prisma.task.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 't1' }, data: { progressPercent: 0 } }),
+      );
+    });
+
+    test('valid progress 50 → ok', async () => {
+      const prisma = createMockPrisma();
+      const outbox = createMockOutbox();
+      const svc = new TasksService(prisma as any, outbox as any);
+
+      prisma.task.findUnique.mockResolvedValue(FIXTURE_TASK_GROUP());
+      prisma.task.update.mockResolvedValue({ ...FIXTURE_TASK_GROUP(), progressPercent: 50 });
+
+      const result = await svc.updateProgress('t1', 50, 'u1');
+
+      expect(result.ok).toBe(true);
+      expect(prisma.task.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 't1' }, data: { progressPercent: 50 } }),
+      );
+    });
+
+    test('valid progress 100 → ok', async () => {
+      const prisma = createMockPrisma();
+      const outbox = createMockOutbox();
+      const svc = new TasksService(prisma as any, outbox as any);
+
+      prisma.task.findUnique.mockResolvedValue(FIXTURE_TASK_GROUP());
+      prisma.task.update.mockResolvedValue({ ...FIXTURE_TASK_GROUP(), progressPercent: 100 });
+
+      const result = await svc.updateProgress('t1', 100, 'u1');
+
+      expect(result.ok).toBe(true);
+    });
+
+    // TP-02: progress < 0 → BadRequestException
+    test('progress < 0 → throws BadRequestException', async () => {
+      const prisma = createMockPrisma();
+      const outbox = createMockOutbox();
+      const svc = new TasksService(prisma as any, outbox as any);
+
+      prisma.task.findUnique.mockResolvedValue(FIXTURE_TASK_GROUP());
+
+      await expect(svc.updateProgress('t1', -1, 'u1')).rejects.toThrow(BadRequestException);
+    });
+
+    // TP-03: progress > 100 → BadRequestException
+    test('progress > 100 → throws BadRequestException', async () => {
+      const prisma = createMockPrisma();
+      const outbox = createMockOutbox();
+      const svc = new TasksService(prisma as any, outbox as any);
+
+      prisma.task.findUnique.mockResolvedValue(FIXTURE_TASK_GROUP());
+
+      await expect(svc.updateProgress('t1', 101, 'u1')).rejects.toThrow(BadRequestException);
+    });
+
+    // TP-04: task not found → NotFoundException
+    test('task not found → NotFoundException', async () => {
+      const prisma = createMockPrisma();
+      const outbox = createMockOutbox();
+      const svc = new TasksService(prisma as any, outbox as any);
+
+      prisma.task.findUnique.mockResolvedValue(null);
+
+      await expect(svc.updateProgress('ghost', 50, 'u1')).rejects.toThrow(NotFoundException);
+    });
+  });
 });

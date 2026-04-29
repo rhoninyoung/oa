@@ -56,7 +56,7 @@ export class StatisticsService {
 
     const iterationStats = iterations.map(iter => {
       const counts = { pending: 0, reviewing: 0, approved: 0, rejected: 0 };
-      for (const sched of iter.schedules) {
+      for (const sched of iter.schedules ?? []) {
         const key = sched.status.toLowerCase() as keyof typeof counts;
         if (key in counts) counts[key]++;
       }

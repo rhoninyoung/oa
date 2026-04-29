@@ -66,6 +66,7 @@ export function buildSeed() {
       dependencyTaskId: null,
       source: 'GROUP',
       note: '',
+      progressPercent: 0,
     }));
   };
 

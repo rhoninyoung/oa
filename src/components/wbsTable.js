@@ -19,6 +19,7 @@ const COLUMNS = [
   { key: 'startDate',  label: '开始日期',   width: 110, sticky: false, editable: true, type: 'date' },
   { key: 'endDate',    label: '结束日期',   width: 110, sticky: false, editable: true, type: 'date' },
   { key: 'durationDays', label: '天数',     width: 60,  sticky: false, editable: true, type: 'number' },
+  { key: 'progressPercent', label: '进度',  width: 70,  sticky: false, editable: true, type: 'percent' },
   { key: 'dep',        label: '依赖',       width: 120, sticky: false, editable: false },
   { key: 'note',       label: '备注',        width: 160, sticky: false, editable: true, multiline: true },
 ];
@@ -140,6 +141,12 @@ export function renderWBSTable(schedule, tasks) {
               ${fieldRO
                 ? (task.durationDays ?? '')
                 : `<input type="number" min="0" class="cell-input" data-col="durationDays" data-task-id="${task.id}" value="${task.durationDays ?? 1}" style="border:none;width:100%">`}
+            </td>`;
+          case 'progressPercent':
+            return `<td class="${sticky} ${cls}" data-col="progressPercent" style="${style}">
+              ${fieldRO
+                ? `<span>${task.progressPercent ?? 0}%</span>`
+                : `<input type="number" min="0" max="100" class="cell-input" data-col="progressPercent" data-task-id="${task.id}" value="${task.progressPercent ?? 0}" style="border:none;width:calc(100% - 14px)">`}
             </td>`;
           case 'dep':
             return `<td class="${sticky}" data-col="dep" style="${style}">
@@ -388,7 +395,8 @@ function startEdit(td) {
 
   } else {
     input = document.createElement('input');
-    input.type = col === 'durationDays' ? 'number' : 'text';
+    input.type = (col === 'durationDays' || col === 'progressPercent') ? 'number' : 'text';
+    if (col === 'progressPercent') { input.min = '0'; input.max = '100'; }
     input.className = 'cell-input';
     input.value = task[col] ?? '';
     input.style.cssText = 'border:none;outline:2px solid #2563eb;width:100%;height:100%';

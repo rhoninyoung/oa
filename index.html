@@ -35,6 +35,7 @@
       <!-- View mode tabs -->
       <div id="view-tabs" style="display:flex;gap:4px;padding:6px 12px;border-bottom:1px solid var(--border);">
         <button id="tab-wbs" class="view-tab active">WBS视图</button>
+        <button id="tab-dashboard" class="view-tab">首页</button>
         <button id="tab-calendar" class="view-tab">日历视图</button>
         <button id="tab-gantt" class="view-tab">甘特图</button>
         <button id="tab-kanban" class="view-tab">看板</button>
@@ -48,6 +49,8 @@
           <tbody id="wbs-tbody"></tbody>
         </table>
       </div>
+      <!-- Dashboard view -->
+      <div id="dashboard-view-wrapper" class="hidden"></div>
       <!-- Master view: separate container, never touches wbs-table -->
       <div id="master-view-wrapper" class="hidden"></div>
       <!-- Calendar view -->

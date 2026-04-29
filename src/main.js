@@ -11,6 +11,7 @@ import { renderStatsView } from './components/statsView.js';
 import { renderCalendarView } from './components/calendarView.js';
 import { renderGanttView } from './components/ganttView.js';
 import { renderKanbanView } from './components/kanbanView.js';
+import { renderDashboardView } from './components/dashboardView.js';
 import { scheduleAutoSave } from './hooks/autoSave.js';
 import {
   isAPIMode as isAPIModeCheck,
@@ -569,6 +570,18 @@ function setupGlobalEvents() {
   document.getElementById('tab-kanban')?.addEventListener('click', () => {
     activateTab('tab-kanban');
     renderKanbanView();
+  });
+
+  document.getElementById('tab-dashboard')?.addEventListener('click', () => {
+    activateTab('tab-dashboard');
+    document.getElementById('group-view-wrapper')?.classList.add('hidden');
+    document.getElementById('master-view-wrapper')?.classList.add('hidden');
+    document.getElementById('calendar-view-wrapper')?.classList.add('hidden');
+    document.getElementById('gantt-view-wrapper')?.classList.add('hidden');
+    document.getElementById('kanban-view-wrapper')?.classList.add('hidden');
+    document.getElementById('stats-view-wrapper')?.classList.add('hidden');
+    document.getElementById('dashboard-view-wrapper')?.classList.remove('hidden');
+    renderDashboardView();
   });
 
   // Ctrl+S trigger

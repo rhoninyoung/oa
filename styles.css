@@ -679,3 +679,112 @@ td .dep-arrow { color: var(--primary); font-size: 11px; margin-left: 4px; }
 .mt-4 { margin-top: 4px; }
 .mr-4 { margin-right: 4px; }
 .flex-center { display: flex; align-items: center; gap: 8px; }
+
+/* ─── Dashboard ─────────────────────────────────── */
+#dashboard-view-wrapper {
+  padding: 16px;
+  overflow: auto;
+  flex: 1;
+}
+.dashboard-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.dashboard-header h2 { margin: 0; }
+.dashboard-greeting {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.dashboard-stat-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+.stat-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+.dashboard-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.dashboard-section h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--text);
+}
+.progress-bar-item {
+  margin-bottom: 10px;
+}
+.progress-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.progress-bar-track {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.lagging-list {
+  list-style: none;
+  padding: 0;
+}
+.lagging-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.lagging-item:last-child { border-bottom: none; }
+.lagging-name { color: var(--text); font-weight: 500; }
+.lagging-meta { color: var(--text-secondary); }
+.dashboard-quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dashboard-btn {
+  padding: 8px 16px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.dashboard-btn:hover { opacity: 0.9; }
+
