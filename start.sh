@@ -21,26 +21,16 @@ echo "=========================================="
 # 1. 停止旧容器（如果存在）
 docker compose down 2>/dev/null || true
 
-# 2. 启动数据库（所有模式都需要）
+# 2. 启动数据库
 echo ""
-echo "[1/3] 启动 PostgreSQL..."
+echo "[1/2] 启动 PostgreSQL..."
 docker compose up -d postgres
 docker compose ps postgres
 
-# 3. 启动服务
-if $API_MODE; then
-  echo ""
-  echo "[2/3] 启动后端 API..."
-  docker compose up -d backend
-
-  echo ""
-  echo "[3/3] 启动 nginx..."
-  docker compose up -d nginx
-else
-  echo ""
-  echo "[2/3] 启动 nginx..."
-  docker compose up -d nginx
-fi
+# 3. 启动后端和 nginx
+echo ""
+echo "[2/2] 启动 backend + nginx..."
+docker compose up -d backend nginx
 
 # 4. 等待 nginx 就绪
 echo ""
@@ -73,15 +63,15 @@ echo ""
 echo "前端: http://localhost"
 if $API_MODE; then
   echo "后端: http://localhost:3000"
-  echo "API 代理: http://localhost/api/* → backend:3000"
+  echo "API 模式: 已启用 (nginx 反向代理 /api/* 到后端)"
 else
-  echo "后端: 未启动 (localStorage 模式)"
+  echo "后端: http://localhost:3000 (后台运行，前端使用 localStorage)"
 fi
 echo ""
 echo "按 Ctrl+C 停止所有服务"
 
-# 6. 等待 SIGINT/SIGTERM → 停止所有容器
+# 6. 保持脚本运行（前台跟踪日志），Ctrl+C 触发停止
 trap 'echo "停止服务..."; docker compose down; echo "全部已停止。"; exit 0' SIGINT SIGTERM
 
-# 保持脚本运行（前台等待 docker compose）
-docker compose wait
+echo "所有服务已在后台运行..."
+docker compose logs --follow --tail=0
