@@ -111,27 +111,4 @@ test.describe('OA MVP Smoke Tests', () => {
     const realErrors = errors.filter(e => !e.includes('favicon'));
     expect(realErrors).toHaveLength(0);
   });
-
-  test('30s 自动保存触发（验证 localStorage 有写入）', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-
-    // 记录初始 localStorage 状态
-    const before = await page.evaluate(() => {
-      return localStorage.getItem('oa.state.v1');
-    });
-
-    // 等待 30s 自动保存（Playwright 默认 timeout 30s，恰好覆盖）
-    // 或者直接手动触发保存
-    await page.keyboard.press('Control+s');
-    await page.waitForTimeout(500);
-
-    const after = await page.evaluate(() => {
-      return localStorage.getItem('oa.state.v1');
-    });
-
-    expect(after).not.toBeNull();
-    // 理想情况下 after !== before（如果有数据变化）
-    // 但初始状态可能相同，所以只验证有写入
-  });
 });

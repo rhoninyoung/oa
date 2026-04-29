@@ -1,6 +1,5 @@
 // src/main.js
-import { getState, setState, subscribe, exportState, importState, isAPIMode, initFromAPI, mergeAPIData } from './store.js';
-import { buildSeed } from './seed.js';
+import { getState, setState, subscribe, initState, mergeAPIData } from './store.js';
 import { downloadJSON, pickJSONFile } from './io/importExport.js';
 import { exportScheduleToExcel, exportMasterViewToExcel, importScheduleFromExcel } from './io/excel.js';
 import { renderRoleSwitcher } from './components/roleSwitcher.js';
@@ -14,10 +13,8 @@ import { renderKanbanView } from './components/kanbanView.js';
 import { renderDashboardView } from './components/dashboardView.js';
 import { scheduleAutoSave } from './hooks/autoSave.js';
 import {
-  isAPIMode as isAPIModeCheck,
-  fetchProjects,
-  fetchAllSchedulesWithTasks,
-  flattenProjectsResponse,
+  fetchInitData,
+  fetchMasterView,
   flattenScheduleResult,
   saveDraft,
   submitSchedule,
@@ -29,42 +26,20 @@ import {
   deleteMasterRow,
 } from './api/client.js';
 
-export { isAPIMode } from './store.js';
-export { isAPIModeCheck as checkAPIMode };
+export {};
 
 // ─── Bootstrap ─────────────────────────────────────────────────────────────
 
 async function init() {
-  if (isAPIModeCheck()) {
-    // API 模式：从后端拉取完整数据
-    try {
-      const projects = await fetchProjects();
-      const flat = flattenProjectsResponse(projects);
-      await initFromAPI({
-        projects,
-        fetchAllSchedulesWithTasks,
-        buildSeed,
-      });
-      // 合并基础数据（users/groups 等来自 buildSeed）
-      const state = getState();
-      setState({
-        ...state,
-        users: flat.users,
-        groups: flat.groups,
-        projects: flat.projects,
-        iterations: flat.iterations,
-        schedules: flat.schedules,
-        tasks: flat.tasks,
-      });
-    } catch (e) {
-      console.error('[initFromAPI]', e);
-      showToast('API 连接失败，使用本地数据', 'error');
-    }
-  }
-
   const state = getState();
-  if (!state.users.length) {
-    setState(buildSeed());
+  try {
+    // 从后端 /api/init 拉取全部初始化数据
+    const data = await fetchInitData(state.currentUserId ?? 'u_gl1');
+    initState(data);
+  } catch (e) {
+    console.error('[init]', e);
+    showToast('连接后端失败，请检查服务是否启动', 'error');
+    return;
   }
 
   render();
@@ -82,8 +57,6 @@ function render() {
     if (editing) {
       renderRoleSwitcher(document.getElementById('role-switcher'));
       renderProjectTree(document.getElementById('project-tree'));
-      // Skip ActivityLog during editing — it changes infrequently and would cause
-      // unnecessary re-renders while the user is interacting with a cell
       return;
     }
 
@@ -116,7 +89,6 @@ function renderGroupView() {
   );
   const schedTasks = tasks.filter(t => t.scheduleId === sched?.id);
 
-  // Schedule header
   const schedEl = document.getElementById('schedule-header');
   const iter = state.iterations.find(i => i.id === activeIterationId);
   const group = state.groups.find(g => g.id === activeGroupId);
@@ -128,10 +100,8 @@ function renderGroupView() {
     </span>
   `;
 
-  // Approval panel (GL sees submit/withdraw; PM sees approve/reject/reschedule)
   renderApprovalPanel(sched);
 
-  // WBS table
   document.getElementById('approval-panel').className =
     sched?.status === 'REVIEWING' ? 'visible' : '';
 
@@ -191,7 +161,7 @@ function renderMasterView() {
   const scheds = state.schedules.filter(s => s.iterationId === iter?.id);
   const approvedTasks = state.tasks.filter(t => {
     const sch = state.schedules.find(s => s.id === t.scheduleId);
-    return sch && (sch.status === 'APPROVED' && t.source === 'GROUP') || t.source === 'MASTER';
+    return sch && ((sch.status === 'APPROVED' && t.source === 'GROUP') || t.source === 'MASTER');
   });
 
   document.getElementById('schedule-header').innerHTML = `
@@ -212,7 +182,6 @@ function renderMasterView() {
 
 function renderMasterTable(tasks) {
   const state = getState();
-  const groups = state.groups;
   const users = state.users;
 
   const rows = tasks.map(t => {
@@ -236,7 +205,6 @@ function renderMasterTable(tasks) {
       </tr>`;
   }).join('');
 
-  // Write into master-view-wrapper — never touches wbs-table (which belongs to group view)
   const wrapper = document.getElementById('master-view-wrapper');
   wrapper.innerHTML = `
     <table id="master-table">
@@ -254,9 +222,9 @@ function renderMasterTable(tasks) {
   });
 }
 
-// ─── State transition handlers ───────────────────────────────────────────────
+// ─── State transition handlers (API only) ─────────────────────────────────────
 
-import { canTransition, nextStatus } from './domain/stateMachine.js';
+import { canTransition } from './domain/stateMachine.js';
 import { addLogEntry } from './components/activityLog.js';
 import { showToast } from './components/toast.js';
 
@@ -271,25 +239,16 @@ async function handleSubmit() {
   const tasks = state.tasks.filter(t => t.scheduleId === sched.id);
   const user = state.users.find(u => u.id === state.currentUserId);
 
-  // 本地状态机校验
   const check = canTransition(sched.status, 'submit', user.role, { tasks });
   if (!check.ok) { showToast(check.message ?? check.code, 'error'); return; }
 
-  if (isAPIModeCheck()) {
-    try {
-      const result = await submitSchedule(sched.id, state.currentUserId);
-      mergeAPIData(flattenScheduleResult(result.schedule));
-      addLogEntry('SUBMIT', state.currentUserId, `${result.schedule.status} ← ${sched.status}`);
-      showToast(`已提交，等待 PM 审批`, 'info');
-    } catch (e) {
-      showToast(`提交失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
-    }
-  } else {
-    const newStatus = nextStatus(sched.status, 'submit');
-    const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
-    setState({ ...state, schedules: updated });
-    addLogEntry('SUBMIT', state.currentUserId, `${newStatus} ← ${sched.status}`);
+  try {
+    const result = await submitSchedule(sched.id, state.currentUserId);
+    mergeAPIData(flattenScheduleResult(result.schedule));
+    addLogEntry('SUBMIT', state.currentUserId, `${result.schedule.status} ← ${sched.status}`);
     showToast(`已提交，等待 PM 审批`, 'info');
+  } catch (e) {
+    showToast(`提交失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
   }
 }
 
@@ -302,21 +261,13 @@ async function handleWithdraw() {
   const check = canTransition(sched.status, 'withdraw', user.role, {});
   if (!check.ok) { showToast(check.message ?? check.code, 'error'); return; }
 
-  if (isAPIModeCheck()) {
-    try {
-      const result = await withdrawSchedule(sched.id, state.currentUserId);
-      mergeAPIData(flattenScheduleResult(result.schedule));
-      addLogEntry('WITHDRAW', state.currentUserId, `撤回至草稿`);
-      showToast(`已撤回`, 'info');
-    } catch (e) {
-      showToast(`撤回失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
-    }
-  } else {
-    const newStatus = nextStatus(sched.status, 'withdraw');
-    const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
-    setState({ ...state, schedules: updated });
+  try {
+    const result = await withdrawSchedule(sched.id, state.currentUserId);
+    mergeAPIData(flattenScheduleResult(result.schedule));
     addLogEntry('WITHDRAW', state.currentUserId, `撤回至草稿`);
     showToast(`已撤回`, 'info');
+  } catch (e) {
+    showToast(`撤回失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
   }
 }
 
@@ -329,21 +280,13 @@ async function handleApprove() {
   const check = canTransition(sched.status, 'approve', user.role, {});
   if (!check.ok) { showToast(check.message ?? check.code, 'error'); return; }
 
-  if (isAPIModeCheck()) {
-    try {
-      const result = await approveSchedule(sched.id, state.currentUserId);
-      mergeAPIData(flattenScheduleResult(result.schedule));
-      addLogEntry('APPROVE', state.currentUserId, `已同意`);
-      showToast(`已批准`, 'success');
-    } catch (e) {
-      showToast(`审批失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
-    }
-  } else {
-    const newStatus = nextStatus(sched.status, 'approve');
-    const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
-    setState({ ...state, schedules: updated });
+  try {
+    const result = await approveSchedule(sched.id, state.currentUserId);
+    mergeAPIData(flattenScheduleResult(result.schedule));
     addLogEntry('APPROVE', state.currentUserId, `已同意`);
     showToast(`已批准`, 'success');
+  } catch (e) {
+    showToast(`审批失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
   }
 }
 
@@ -356,21 +299,13 @@ async function handleReject(reason) {
   const check = canTransition(sched.status, 'reject', user.role, { reason });
   if (!check.ok) { showToast(check.message ?? check.code, 'error'); return; }
 
-  if (isAPIModeCheck()) {
-    try {
-      const result = await rejectSchedule(sched.id, reason, state.currentUserId);
-      mergeAPIData(flattenScheduleResult(result.schedule));
-      addLogEntry('REJECT', state.currentUserId, reason ? `理由：${reason}` : '已拒绝');
-      showToast(`已拒绝：${reason}`, 'warning');
-    } catch (e) {
-      showToast(`拒绝失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
-    }
-  } else {
-    const newStatus = nextStatus(sched.status, 'reject');
-    const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus, rejectReason: reason } : s);
-    setState({ ...state, schedules: updated });
+  try {
+    const result = await rejectSchedule(sched.id, reason, state.currentUserId);
+    mergeAPIData(flattenScheduleResult(result.schedule));
     addLogEntry('REJECT', state.currentUserId, reason ? `理由：${reason}` : '已拒绝');
     showToast(`已拒绝：${reason}`, 'warning');
+  } catch (e) {
+    showToast(`拒绝失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
   }
 }
 
@@ -383,21 +318,13 @@ async function handleResched() {
   const check = canTransition(sched.status, 'reschedule', user.role, {});
   if (!check.ok) { showToast(check.message ?? check.code, 'error'); return; }
 
-  if (isAPIModeCheck()) {
-    try {
-      const result = await reschedule(sched.id, state.currentUserId);
-      mergeAPIData(flattenScheduleResult(result.schedule));
-      addLogEntry('RESCHED', state.currentUserId, `PM 发起重新排期`);
-      showToast(`已发起重新排期，组长可重新编辑`, 'warning');
-    } catch (e) {
-      showToast(`重新排期失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
-    }
-  } else {
-    const newStatus = nextStatus(sched.status, 'reschedule');
-    const updated = state.schedules.map(s => s.id === sched.id ? { ...s, status: newStatus } : s);
-    setState({ ...state, schedules: updated });
+  try {
+    const result = await reschedule(sched.id, state.currentUserId);
+    mergeAPIData(flattenScheduleResult(result.schedule));
     addLogEntry('RESCHED', state.currentUserId, `PM 发起重新排期`);
     showToast(`已发起重新排期，组长可重新编辑`, 'warning');
+  } catch (e) {
+    showToast(`重新排期失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
   }
 }
 
@@ -408,37 +335,17 @@ async function handleMasterAddRow() {
 
   const iter = state.iterations.find(i => i.id === state.activeIterationId);
   const taskData = {
-    name: '新任务',
-    ownerId: null,
-    startDate: iter?.startDate ?? '',
-    endDate: '',
-    durationDays: 1,
+    name: '新任务', ownerId: null,
+    startDate: iter?.startDate ?? '', endDate: '', durationDays: 1,
   };
 
-  if (isAPIModeCheck()) {
-    try {
-      const result = await addMasterRow(state.activeIterationId, sched.id, taskData, state.currentUserId);
-      const flat = flattenScheduleResult(result.task);
-      mergeAPIData({ tasks: flat.tasks });
-      addLogEntry('MASTER_ADD', state.currentUserId, `新增总表行：${result.task.name}`);
-      showToast(`已新增总表行`, 'success');
-    } catch (e) {
-      showToast(`新增行失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
-    }
-  } else {
-    let _rowId = Date.now();
-    const newTask = {
-      id: String(++_rowId),
-      scheduleId: sched.id,
-      orderIndex: state.tasks.filter(t => t.scheduleId === sched.id).length,
-      ...taskData,
-      dependencyTaskId: null,
-      source: 'MASTER',
-      note: '',
-    };
-    setState({ ...state, tasks: [...state.tasks, newTask] });
-    addLogEntry('MASTER_ADD', state.currentUserId, `新增总表行：${newTask.name}`);
+  try {
+    const result = await addMasterRow(state.activeIterationId, sched.id, taskData, state.currentUserId);
+    mergeAPIData(flattenScheduleResult(result.task));
+    addLogEntry('MASTER_ADD', state.currentUserId, `新增总表行：${result.task.name}`);
     showToast(`已新增总表行`, 'success');
+  } catch (e) {
+    showToast(`新增行失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
   }
 }
 
@@ -450,19 +357,13 @@ async function handleMasterDeleteRow(taskId) {
     showToast('系统同步行不可删除', 'error'); return;
   }
 
-  if (isAPIModeCheck()) {
-    try {
-      await deleteMasterRow(taskId, state.currentUserId);
-      mergeAPIData({ tasks: state.tasks.filter(t => t.id !== taskId) });
-      addLogEntry('MASTER_DEL', state.currentUserId, `删除总表行：${task.name}`);
-      showToast(`已删除`, 'info');
-    } catch (e) {
-      showToast(`删除失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
-    }
-  } else {
-    setState({ ...state, tasks: state.tasks.filter(t => t.id !== taskId) });
+  try {
+    await deleteMasterRow(taskId, state.currentUserId);
+    setState({ tasks: state.tasks.filter(t => t.id !== taskId) });
     addLogEntry('MASTER_DEL', state.currentUserId, `删除总表行：${task.name}`);
     showToast(`已删除`, 'info');
+  } catch (e) {
+    showToast(`删除失败：${e.message ?? e.code ?? '网络错误'}`, 'error');
   }
 }
 
@@ -478,17 +379,14 @@ function _currentSchedule() {
 function setupGlobalEvents() {
   // Export
   document.getElementById('btn-export').addEventListener('click', () => {
-    downloadJSON(exportState(), `oa-backup-${Date.now()}.json`);
+    const state = getState();
+    downloadJSON(JSON.stringify(state, null, 2), `oa-backup-${Date.now()}.json`);
     showToast('已导出 JSON 备份', 'success');
   });
 
   // Import
   document.getElementById('btn-import').addEventListener('click', async () => {
-    const content = await pickJSONFile('file-import');
-    if (!content) return;
-    const result = importState(content);
-    if (!result.ok) { showToast('导入失败：' + result.error, 'error'); return; }
-    showToast('已从 JSON 恢复', 'success');
+    showToast('导入功能需刷新页面后重新加载数据', 'info');
   });
 
   // Excel Export
@@ -527,7 +425,6 @@ function setupGlobalEvents() {
       return;
     }
 
-    // 替换当前 schedule 的任务
     const otherTasks = state.tasks.filter(t => t.scheduleId !== sched.id);
     setState({ tasks: [...otherTasks, ...result.tasks] });
     showToast(`已导入 ${result.tasks.length} 条任务`, 'success');
@@ -593,5 +490,5 @@ function setupGlobalEvents() {
   });
 }
 
-// ─── Start ──────────────────────────────────────────────────────────────────
+// ─── Start ─────────────────────────────────────────────────────────────────
 init();

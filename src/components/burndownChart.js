@@ -2,7 +2,6 @@
 // Burndown chart for iteration progress tracking
 
 import { getState } from '../store.js';
-import { isAPIMode } from '../store.js';
 
 // Chart.js accessed via window.Chart (CDN global)
 const Chart = window['Chart'];

@@ -2,7 +2,6 @@
 // Kanban view — PENDING | REVIEWING | APPROVED | REJECTED columns with task cards
 
 import { getState, setState } from '../store.js';
-import { isAPIMode } from '../store.js';
 
 const COLUMNS = [
   { key: 'PENDING', label: '待提交', color: '#f59e0b' },
@@ -111,35 +110,26 @@ function setupKanbanDragDrop(state) {
       }
 
       if (newStatus === 'REVIEWING' && sched.status === 'PENDING') {
-        // GL can submit
-        if (isAPIMode()) {
-          try {
-            const resp = await fetch(`/api/schedules/${sched.id}/submit`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: state.currentUserId }),
-            });
-            if (resp.ok) showToast('已提交', 'success');
-          } catch {
-            showToast('提交失败', 'error');
-          }
-        } else {
-          showToast('本地模式下请使用提交按钮', 'warning');
+        try {
+          const resp = await fetch(`/api/schedules/${sched.id}/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: state.currentUserId }),
+          });
+          if (resp.ok) showToast('已提交', 'success');
+        } catch {
+          showToast('提交失败', 'error');
         }
       } else if (newStatus === 'APPROVED' && sched.status === 'REVIEWING') {
-        if (isAPIMode()) {
-          try {
-            const resp = await fetch(`/api/schedules/${sched.id}/approve`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: state.currentUserId }),
-            });
-            if (resp.ok) showToast('已批准', 'success');
-          } catch {
-            showToast('批准失败', 'error');
-          }
-        } else {
-          showToast('本地模式下请使用审批按钮', 'warning');
+        try {
+          const resp = await fetch(`/api/schedules/${sched.id}/approve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: state.currentUserId }),
+          });
+          if (resp.ok) showToast('已批准', 'success');
+        } catch {
+          showToast('批准失败', 'error');
         }
       } else {
         showToast(`不支持从 ${sched.status} 直接拖拽到 ${newStatus}`, 'warning');

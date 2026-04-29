@@ -2,7 +2,6 @@
 // Calendar view — monthly grid showing tasks as colored bars
 
 import { getState } from '../store.js';
-import { isAPIMode } from '../store.js';
 
 const DAYS = ['日', '一', '二', '三', '四', '五', '六'];
 const MONTHS = ['一月', '二月', '三月', '四月', '五月', '六月',

@@ -2,7 +2,6 @@
 // Gantt chart view — horizontal bars with dependency arrows
 
 import { getState } from '../store.js';
-import { isAPIMode } from '../store.js';
 import { addWorkDays } from '../domain/calendar.js';
 
 /**

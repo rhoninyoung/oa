@@ -10,6 +10,21 @@ import { checkDependencyCycle, propagateFinishChange } from '../domain/dependenc
 import { isWeekend, addWorkDays } from '../domain/calendar.js';
 import { renderSearchFilter } from './searchFilter.js';
 
+async function apiUpdateProgress(taskId, progress, userId) {
+  try {
+    const res = await fetch(`/api/tasks/${taskId}/progress`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+      body: JSON.stringify({ progress }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  } catch (e) {
+    console.error('[wbsTable] updateProgress failed:', e);
+    return null;
+  }
+}
+
 // ─── Column definitions ────────────────────────────────────────────────────
 
 const COLUMNS = [
@@ -487,6 +502,11 @@ function applyEdit(taskId, col, newVal) {
 
   const newTasks = state.tasks.map(t => t.id === taskId ? updated : t);
   setState({ ...state, tasks: newTasks });
+
+  // Immediately persist progressPercent to API
+  if (col === 'progressPercent') {
+    apiUpdateProgress(taskId, newVal, state.currentUserId);
+  }
   // setState → subscribe(render) handles re-render; do NOT call renderWBSTable here
 }
 

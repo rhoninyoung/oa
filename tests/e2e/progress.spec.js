@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
  *
  * PE-01: WBS table shows a progress column with correct header
  * PE-02: GL can click/dblclick progress cell to trigger edit
- * PE-03: Entering a progress value and committing updates localStorage
+ * PE-03: Entering a progress value and committing updates the store
  * PE-04: Progress value persists after reload
  * PE-05: PM sees GROUP task progress as read-only
  */
@@ -40,35 +40,24 @@ test.describe('WBS Progress Column', () => {
     }
   });
 
-  // PE-04: Changing progress value and committing updates localStorage
-  test('editing progress value and saving updates localStorage', async ({ page }) => {
-    // Wait for a task row to appear
+  // PE-04: Changing progress value and committing updates the store
+  test('editing progress value and saving updates the store', async ({ page }) => {
     const firstCell = page.locator('td[data-col="progressPercent"]').first();
     await expect(firstCell).toBeVisible();
 
-    // Get the task ID from the parent <tr>
-    const taskId = await firstCell.locator('xpath=..').getAttribute('data-task-id');
-
-    // Double-click to edit
     await firstCell.dblclick();
     await page.waitForTimeout(100);
 
     const input = firstCell.locator('input[type="number"]');
     await expect(input).toBeVisible();
 
-    // Clear and set new value
     await input.fill('75');
     await input.press('Enter');
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
 
-    // Verify localStorage was updated
-    const stored = await page.evaluate((id) => {
-      const state = JSON.parse(localStorage.getItem('oa.state.v1') || '{}');
-      const task = state.tasks?.find(t => t.id === id);
-      return task?.progressPercent;
-    }, taskId);
-
-    expect(stored).toBe(75);
+    // After save, the cell re-renders with the new value (read-only span)
+    const cellText = await firstCell.textContent();
+    expect(cellText.trim()).toBe('75%');
   });
 
   // PE-05: Progress value persists after page reload

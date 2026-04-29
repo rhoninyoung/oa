@@ -2,7 +2,6 @@
 // Statistics dashboard with Chart.js bar/pie charts
 
 import { getState } from '../store.js';
-import { isAPIMode } from '../store.js';
 
 // Chart.js accessed via window.Chart (CDN global)
 const Chart = window['Chart'];
@@ -58,19 +57,15 @@ function populateIterationSelect() {
 async function loadAndRenderCharts(iterationId) {
   let workloadData, progressData;
 
-  if (isAPIMode()) {
-    try {
-      const [wl, prog] = await Promise.all([
-        fetch(`/api/statistics/workload?iterationId=${iterationId}`).then(r => r.json()),
-        fetch(`/api/statistics/progress?projectId=${getState().projects[0]?.id}`).then(r => r.json()),
-      ]);
-      workloadData = wl;
-      progressData = prog;
-    } catch (e) {
-      console.error('[Stats] API fetch failed, using local data', e);
-      [workloadData, progressData] = computeLocalStats(iterationId);
-    }
-  } else {
+  try {
+    const [wl, prog] = await Promise.all([
+      fetch(`/api/statistics/workload?iterationId=${iterationId}`).then(r => r.json()),
+      fetch(`/api/statistics/progress?projectId=${getState().projects[0]?.id}`).then(r => r.json()),
+    ]);
+    workloadData = wl;
+    progressData = prog;
+  } catch (e) {
+    console.error('[Stats] API fetch failed, using local data', e);
     [workloadData, progressData] = computeLocalStats(iterationId);
   }
 

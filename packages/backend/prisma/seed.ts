@@ -81,13 +81,22 @@ async function main() {
   ];
 
   for (const t of s1Tasks) {
-    await prisma.task.create({ data: { scheduleId: 's1', ...t, source: 'GROUP' } });
+    await prisma.task.create({ data: { scheduleId: 's1', ...t, source: 'GROUP', progressPercent: 0 } });
   }
   for (const t of s2Tasks) {
-    await prisma.task.create({ data: { scheduleId: 's2', ...t, source: 'GROUP' } });
+    await prisma.task.create({ data: { scheduleId: 's2', ...t, source: 'GROUP', progressPercent: 0 } });
   }
 
-  console.log('✅ Seed complete: 3 users, 2 groups, 1 project, 1 iteration, 2 schedules, 10 tasks');
+  // Holidays (mirrors src/seed.js)
+  await prisma.holiday.createMany({
+    data: [
+      { date: '2026-05-01', name: '劳动节', year: 2026 },
+      { date: '2026-05-02', name: '劳动节假期', year: 2026 },
+      { date: '2026-05-03', name: '劳动节假期', year: 2026 },
+    ],
+  });
+
+  console.log('✅ Seed complete: 3 users, 2 groups, 1 project, 1 iteration, 2 schedules, 10 tasks, 3 holidays');
 }
 
 main()
