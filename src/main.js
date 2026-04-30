@@ -31,10 +31,9 @@ export {};
 // ─── Bootstrap ─────────────────────────────────────────────────────────────
 
 async function init() {
-  const state = getState();
   try {
     // 从后端 /api/init 拉取全部初始化数据
-    const data = await fetchInitData(state.currentUserId ?? 'u_gl1');
+    const data = await fetchInitData('u_gl1');
     initState(data);
   } catch (e) {
     console.error('[init]', e);
@@ -52,14 +51,6 @@ async function init() {
 function render() {
   try {
     const state = getState();
-    const editing = isCellEditing();
-
-    if (editing) {
-      renderRoleSwitcher(document.getElementById('role-switcher'));
-      renderProjectTree(document.getElementById('project-tree'));
-      return;
-    }
-
     renderRoleSwitcher(document.getElementById('role-switcher'));
     renderProjectTree(document.getElementById('project-tree'));
 

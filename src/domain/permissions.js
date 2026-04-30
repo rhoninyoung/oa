@@ -94,7 +94,7 @@ export function getFieldPermissions(task, schedule, role, user) {
 
   // PM in GROUP view (not MASTER view) — all fields read-only
   if (isPM && task.source === 'GROUP') {
-    return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note']) };
+    return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note', 'progressPercent']) };
   }
 
   // MASTER tasks — PM can always edit
@@ -106,17 +106,17 @@ export function getFieldPermissions(task, schedule, role, user) {
   if (task.source === 'GROUP') {
     if (isPM) {
       // PM sees GROUP tasks as read-only in GROUP view
-      return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note']) };
+      return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note', 'progressPercent']) };
     }
 
     if (isGL) {
       if (!isOwnGroup) {
         // GL viewing another group's schedule — all read-only
-        return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note']) };
+        return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note', 'progressPercent']) };
       }
       if (schedule.status === 'REVIEWING' || schedule.status === 'APPROVED') {
         // REVIEWING/APPROVED: GL cannot edit fields while under review
-        return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note']) };
+        return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note', 'progressPercent']) };
       }
       // PENDING/REJECTED: GL can edit
       return { ok: true, readonlyFields: null };

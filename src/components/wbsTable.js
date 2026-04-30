@@ -49,6 +49,9 @@ let _copyBuffer = null;
 // True while a textarea/input is actively being edited (not yet committed or cancelled)
 let _isEditing = false;
 
+// Set to true during startEdit to prevent applyCellEdit from committing during edit initiation
+let _ignoreApplyCellEdit = false;
+
 // Current schedule context — updated at the start of each renderWBSTable call
 // so event delegation handlers can read the fresh value without closure staleness
 let _currentScheduleId = null;
@@ -221,6 +224,31 @@ function initWBSEventListeners() {
     }
   }, true); // capture phase to intercept before child
 
+  // ── Document-level Enter/Escape fallback ──────────────────────────────────
+  // Some environments (e.g. Playwright headless) dispatch keyboard events to
+  // document/BODY rather than the focused element. This catches Enter/Escape
+  // when the input-level handler misses.
+  document.addEventListener('keydown', (e) => {
+    if (!_isEditing) return;
+    if (e.key !== 'Enter' && e.key !== 'Escape') return;
+    const target = e.target;
+    if (!target.matches('.cell-input, .cell-textarea')) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (target.dataset.committing === '1') return;
+      target.dataset.committing = '1';
+      const taskId = target.dataset.taskId;
+      const col = target.dataset.col;
+      const newVal = target.type === 'number' ? Number(target.value) : target.value;
+      target.remove();
+      _isEditing = false;
+      applyEdit(taskId, col, newVal);
+    } else if (e.key === 'Escape') {
+      target.remove();
+      _isEditing = false;
+    }
+  });
+
   // ── Dependency picker button ─────────────────────────────────────────────
   table.addEventListener('click', (e) => {
     const btn = e.target.closest('.btn-pick-dep');
@@ -365,13 +393,14 @@ function initWBSEventListeners() {
 // ─── Cell events ────────────────────────────────────────────────────────────
 
 function startEdit(td) {
-  if (td.querySelector('input, select, textarea')) return;
+  if (_isEditing) return; // prevent re-entrant startEdit
   const col = td.dataset.col;
   const taskId = td.closest('tr').dataset.taskId;
   const task = getState().tasks.find(t => t.id === taskId);
   if (!task) return;
 
   _isEditing = true;
+  _ignoreApplyCellEdit = true;
 
   let input;
   if (col === 'note' || col === 'name') {
@@ -416,20 +445,29 @@ function startEdit(td) {
     input.value = task[col] ?? '';
     input.style.cssText = 'border:none;outline:2px solid #2563eb;width:100%;height:100%';
 
-    input.addEventListener('keydown', (e) => {
+    // Use DOM0 handler as primary (more reliable in Playwright headless)
+    input.onkeydown = (e) => {
       if (e.key === 'Enter') {
-        e.stopPropagation();
+        e.preventDefault();
+        const capturedVal = input.value;
+        const capturedType = input.type;
+        const capturedTaskId = taskId;
+        const capturedCol = col;
         _isEditing = false;
-        commitInput(input, taskId, col);
+        input.dataset.committing = '1';
+        input.remove();
+        applyEdit(capturedTaskId, capturedCol, capturedType === 'number' ? Number(capturedVal) : capturedVal);
+        return;
       }
       if (e.key === 'Escape') {
         e.stopPropagation();
         _isEditing = false;
         input.remove();
       }
-    });
+    };
 
     input.addEventListener('blur', () => {
+      if (_ignoreApplyCellEdit) return;
       if (input.dataset.committing === '1') return;
       input.dataset.committing = '1';
       _isEditing = false;
@@ -439,8 +477,13 @@ function startEdit(td) {
 
   td.innerHTML = '';
   td.appendChild(input);
-  input.focus();
-  input.select();
+  // Defer focus to the next microtask so Playwright headless can properly
+  // focus the input before keyboard events (Enter/Escape) are dispatched.
+  Promise.resolve().then(() => {
+    input.focus();
+    input.select();
+  });
+  _ignoreApplyCellEdit = false; // done with edit initiation
 }
 
 function commitTextarea(input, taskId, col) {
@@ -456,6 +499,7 @@ function commitInput(input, taskId, col) {
 }
 
 function applyCellEdit(el) {
+  if (_ignoreApplyCellEdit) return;
   if (el.dataset.committing === '1') return;
   const taskId = el.dataset.taskId;
   const col = el.dataset.col;
@@ -467,7 +511,7 @@ function applyCellEdit(el) {
 function applyEdit(taskId, col, newVal) {
   const state = getState();
   const task = state.tasks.find(t => t.id === taskId);
-  if (!task) return;
+  if (!task) { return; }
 
   _undoHistory = pushUndo(_undoHistory, JSON.parse(JSON.stringify(state.tasks)));
 
@@ -505,7 +549,11 @@ function applyEdit(taskId, col, newVal) {
 
   // Immediately persist progressPercent to API
   if (col === 'progressPercent') {
-    apiUpdateProgress(taskId, newVal, state.currentUserId);
+    apiUpdateProgress(taskId, newVal, state.currentUserId).then(result => {
+      if (result?.task) {
+        mergeAPIData({ tasks: [result.task] });
+      }
+    }).catch(() => {});
   }
   // setState → subscribe(render) handles re-render; do NOT call renderWBSTable here
 }

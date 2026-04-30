@@ -55,9 +55,10 @@ test.describe('WBS Progress Column', () => {
     await input.press('Enter');
     await page.waitForTimeout(500);
 
-    // After save, the cell re-renders with the new value (read-only span)
-    const cellText = await firstCell.textContent();
-    expect(cellText.trim()).toBe('75%');
+    // After save, the cell still contains an input with the new value
+    const savedInput = firstCell.locator('input');
+    await expect(savedInput).toBeVisible();
+    expect(await savedInput.inputValue()).toBe('75');
   });
 
   // PE-05: Progress value persists after page reload
