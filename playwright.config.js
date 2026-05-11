@@ -5,14 +5,8 @@ export default defineConfig({
   timeout: 60_000,
   retries: 0,
   use: {
-    baseURL: 'http://localhost:8080',
+    baseURL: 'http://localhost',
     headless: true,
-  },
-  webServer: {
-    command: 'python3 -m http.server 8080',
-    port: 8080,
-    reuseExistingServer: true,
-    timeout: 10_000,
   },
   projects: [
     {

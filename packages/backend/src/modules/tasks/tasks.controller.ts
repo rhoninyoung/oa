@@ -41,4 +41,13 @@ export class TasksController {
   ) {
     return this.tasksService.updateProgress(taskId, body.progress, userId);
   }
+
+  @Patch(':id')
+  async updateTask(
+    @Param('id') taskId: string,
+    @Body() body: Record<string, any>,
+    @Headers('x-user-id') userId: string,
+  ) {
+    return this.tasksService.updateTask(taskId, body, userId);
+  }
 }

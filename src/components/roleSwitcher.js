@@ -12,7 +12,7 @@ export function renderRoleSwitcher(container) {
     <select id="role-select">
       ${users.map(u => `
         <option value="${u.id}" ${u.id === state.currentUserId ? 'selected' : ''}>
-          ${u.name} (${u.role === 'GROUP_LEADER' ? '组长' : 'PM'})
+          ${u.name} (${u.role === 'GROUP_LEADER' ? '组长' : (u.roles?.includes('PM') ? 'PM' : '组员')})
         </option>
       `).join('')}
     </select>

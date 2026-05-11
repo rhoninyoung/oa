@@ -31,10 +31,55 @@ const del   = (path, userId) => request('DELETE', path, undefined, userId);
 // ─── 初始化 ─────────────────────────────────────────────────────────────────
 
 /**
+ * Normalize Prisma DateTime objects to YYYY-MM-DD strings
+ * Prisma returns Date objects that serialize to ISO strings like "2026-05-04T00:00:00.000Z"
+ */
+function normalizeDate(dateVal) {
+  if (!dateVal) return null;
+  if (typeof dateVal === 'string') {
+    // Already a string - check if it's ISO format with time component
+    if (dateVal.includes('T')) {
+      return dateVal.slice(0, 10);
+    }
+    return dateVal;
+  }
+  if (dateVal instanceof Date) {
+    const y = dateVal.getFullYear();
+    const m = String(dateVal.getMonth() + 1).padStart(2, '0');
+    const d = String(dateVal.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return dateVal;
+}
+
+function normalizeTask(task) {
+  return {
+    ...task,
+    startDate: normalizeDate(task.startDate),
+    endDate: normalizeDate(task.endDate),
+  };
+}
+
+function normalizeIteration(iter) {
+  return {
+    ...iter,
+    startDate: normalizeDate(iter.startDate),
+    endDate: normalizeDate(iter.endDate),
+  };
+}
+
+/**
  * 获取完整初始化数据（替代原来的 fetchProjects + fetchAllSchedulesWithTasks）
  */
 export async function fetchInitData(userId) {
-  return get(`/init?userId=${encodeURIComponent(userId)}`, userId);
+  const data = await get(`/init?userId=${encodeURIComponent(userId)}`, userId);
+
+  // Normalize all date fields from Prisma DateTime to YYYY-MM-DD
+  return {
+    ...data,
+    iterations: (data.iterations ?? []).map(normalizeIteration),
+    tasks: (data.tasks ?? []).map(normalizeTask),
+  };
 }
 
 // ─── 数据获取 ────────────────────────────────────────────────────────────────
@@ -150,6 +195,10 @@ export async function insertRow(scheduleId, afterIndex, userId) {
 
 export async function deleteRow(taskId, userId) {
   return del(`/tasks/${taskId}`, userId);
+}
+
+export async function updateTask(taskId, data, userId) {
+  return patch(`/tasks/${taskId}`, data, userId);
 }
 
 export async function setDependency(taskId, dependencyTaskId, userId) {

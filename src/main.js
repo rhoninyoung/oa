@@ -4,7 +4,7 @@ import { downloadJSON, pickJSONFile } from './io/importExport.js';
 import { exportScheduleToExcel, exportMasterViewToExcel, importScheduleFromExcel } from './io/excel.js';
 import { renderRoleSwitcher } from './components/roleSwitcher.js';
 import { renderProjectTree } from './components/projectTree.js';
-import { renderWBSTable, initTableKeyboard, isCellEditing } from './components/wbsTable.js';
+import { renderWBSTable, initTableKeyboard, isCellEditing, fmtDate } from './components/wbsTable.js';
 import { renderActivityLog } from './components/activityLog.js';
 import { renderStatsView } from './components/statsView.js';
 import { renderCalendarView } from './components/calendarView.js';
@@ -183,8 +183,8 @@ function renderMasterTable(tasks) {
         <td>${t.orderIndex + 1}</td>
         <td>${t.name}</td>
         <td>${owner?.name ?? '—'}</td>
-        <td>${t.startDate ?? ''}</td>
-        <td>${t.endDate ?? ''}</td>
+        <td>${fmtDate(t.startDate) ?? ''}</td>
+        <td>${fmtDate(t.endDate) ?? ''}</td>
         <td>${t.durationDays ?? ''}</td>
         <td><span class="source-badge ${source}">${source === 'GROUP' ? 'GL' : 'PM'}</span></td>
         <td>${t.note ?? ''}</td>

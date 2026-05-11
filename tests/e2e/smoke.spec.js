@@ -46,7 +46,7 @@ test.describe('OA MVP Smoke Tests', () => {
     const switcher = page.locator('#role-select');
     await expect(switcher).toBeVisible();
 
-    // 有3个用户选项：组长-张三、组长-李四、PM-王五
+    // 有4个用户选项：组长-张三、组长-李四、组长-赵六、PM-王五
     const options = await switcher.locator('option').allTextContents();
     expect(options.length).toBeGreaterThanOrEqual(3);
 

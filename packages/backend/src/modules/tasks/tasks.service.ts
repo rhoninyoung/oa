@@ -137,4 +137,32 @@ export class TasksService {
     });
     return { ok: true, task: updated };
   }
+
+  async updateTask(taskId: string, data: Record<string, any>, userId: string) {
+    const task = await this.prisma.task.findUnique({ where: { id: taskId } });
+    if (!task) throw new NotFoundException('Task not found');
+
+    // Filter allowed fields to prevent mass-assignment
+    const allowedFields = ['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'note', 'progressPercent'];
+    const updateData: Record<string, any> = {};
+    for (const field of allowedFields) {
+      if (field in data) {
+        updateData[field] = data[field];
+      }
+    }
+
+    // Handle date fields - convert YYYY-MM-DD strings to Date objects
+    if (updateData.startDate && typeof updateData.startDate === 'string') {
+      updateData.startDate = new Date(updateData.startDate + 'T00:00:00');
+    }
+    if (updateData.endDate && typeof updateData.endDate === 'string') {
+      updateData.endDate = new Date(updateData.endDate + 'T00:00:00');
+    }
+
+    const updated = await this.prisma.task.update({
+      where: { id: taskId },
+      data: updateData,
+    });
+    return { ok: true, task: updated };
+  }
 }

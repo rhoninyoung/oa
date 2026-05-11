@@ -3,6 +3,7 @@
 // 数据来自 store（localStorage）或 API 回退
 
 import { getState } from '../store.js';
+import { fmtDate } from './wbsTable.js';
 
 // ─── Pure computation functions (mirrored from tests/dashboard.test.js) ─────────
 
@@ -162,7 +163,7 @@ export function renderDashboardView() {
           ${stats.laggingTasks.map(t => `
             <li class="lagging-item">
               <span class="lagging-name">${t.name}</span>
-              <span class="lagging-meta">${t.endDate} · ${t.progressPercent ?? 0}%</span>
+              <span class="lagging-meta">${fmtDate(t.endDate) ?? '—'} · ${t.progressPercent ?? 0}%</span>
             </li>
           `).join('')}
         </ul>

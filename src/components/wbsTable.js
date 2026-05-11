@@ -1,7 +1,7 @@
 // src/components/wbsTable.js
 // WBS 表格：整表 diff 重绘 + 键盘/鼠标交互层
 
-import { getState, setState } from '../store.js';
+import { getState, setState, mergeAPIData } from '../store.js';
 import { addLogEntry } from './activityLog.js';
 import { showToast } from './toast.js';
 import { pushUndo, popUndo, popRedo } from '../domain/tableOps.js';
@@ -9,6 +9,7 @@ import { canDeleteRow, getFieldPermissions } from '../domain/permissions.js';
 import { checkDependencyCycle, propagateFinishChange } from '../domain/dependency.js';
 import { isWeekend, addWorkDays } from '../domain/calendar.js';
 import { renderSearchFilter } from './searchFilter.js';
+import { insertRow, deleteRow, updateTask } from '../api/client.js';
 
 async function apiUpdateProgress(taskId, progress, userId) {
   try {
@@ -23,6 +24,26 @@ async function apiUpdateProgress(taskId, progress, userId) {
     console.error('[wbsTable] updateProgress failed:', e);
     return null;
   }
+}
+
+/**
+ * Format a date value to YYYY-MM-DD for HTML date input and display.
+ * Handles ISO strings, Date objects, and already-formatted strings.
+ */
+export function fmtDate(val) {
+  if (!val) return '';
+  if (typeof val === 'string') {
+    // If it looks like ISO with time component, slice to date part
+    if (val.includes('T')) return val.slice(0, 10);
+    return val;
+  }
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(val);
 }
 
 // ─── Column definitions ────────────────────────────────────────────────────
@@ -78,7 +99,7 @@ export function renderWBSTable(schedule, tasks) {
   const holidays = state.holidays ?? [];
   const currentUserId = state.currentUserId;
   const role = users.find(u => u.id === currentUserId)?.role;
-  _currentCanEdit = (role === 'GROUP_LEADER' && schedule?.groupId === users.find(u => u.id === currentUserId)?.groupId);
+  _currentCanEdit = (role === 'GROUP_LEADER' && schedule?.groupId === users.find(u => u.id === currentUserId)?.groupId) || role === 'PROJECT_MANAGER';
   const canEdit = _currentCanEdit; // local alias for render closure
 
   initWBSEventListeners(); // idempotent — only attaches listeners once
@@ -145,14 +166,14 @@ export function renderWBSTable(schedule, tasks) {
           case 'startDate':
             return `<td class="${sticky} ${cls}" data-col="startDate" style="${style}">
               ${fieldRO
-                ? (task.startDate ?? '')
-                : `<input type="date" class="cell-input" data-col="startDate" data-task-id="${task.id}" value="${task.startDate ?? ''}" style="border:none;width:100%">`}
+                ? (fmtDate(task.startDate) ?? '')
+                : `<input type="date" class="cell-input" data-col="startDate" data-task-id="${task.id}" value="${fmtDate(task.startDate)}" style="border:none;width:100%">`}
             </td>`;
           case 'endDate':
             return `<td class="${sticky} ${cls}" data-col="endDate" style="${style}">
               ${fieldRO
-                ? (task.endDate ?? '')
-                : `<input type="date" class="cell-input" data-col="endDate" data-task-id="${task.id}" value="${task.endDate ?? ''}" style="border:none;width:100%">`}
+                ? (fmtDate(task.endDate) ?? '')
+                : `<input type="date" class="cell-input" data-col="endDate" data-task-id="${task.id}" value="${fmtDate(task.endDate)}" style="border:none;width:100%">`}
             </td>`;
           case 'durationDays':
             return `<td class="${sticky} ${cls}" data-col="durationDays" style="${style}">
@@ -275,7 +296,10 @@ function initWBSEventListeners() {
     const task = state.tasks.find(t => t.id === taskId);
     if (!task) return;
     const sched = state.schedules.find(s => s.id === task.scheduleId);
-    const canDel = canDeleteRow(task, sched);
+    const currentUserId = state.currentUserId;
+    const currentUser = state.users.find(u => u.id === currentUserId);
+    const role = currentUser?.role;
+    const canDel = canDeleteRow(task, sched, role, currentUser);
 
     _ctxMenu.innerHTML = `
       <div class="ctx-item" data-action="insert-above" data-ri="${ri}">上方插入行</div>
@@ -438,8 +462,10 @@ function startEdit(td) {
     });
 
   } else {
+    const colDef = COLUMNS.find(c => c.key === col);
+    const isDateCol = col === 'startDate' || col === 'endDate';
     input = document.createElement('input');
-    input.type = (col === 'durationDays' || col === 'progressPercent') ? 'number' : 'text';
+    input.type = col === 'durationDays' || col === 'progressPercent' ? 'number' : (isDateCol ? 'date' : 'text');
     if (col === 'progressPercent') { input.min = '0'; input.max = '100'; }
     input.className = 'cell-input';
     input.value = task[col] ?? '';
@@ -477,6 +503,9 @@ function startEdit(td) {
 
   td.innerHTML = '';
   td.appendChild(input);
+  // Mark as committing BEFORE focus to prevent capture-phase blur from committing
+  // the half-ready input (the blur fires when focus() moves from the previous target)
+  input.dataset.committing = '1';
   // Defer focus to the next microtask so Playwright headless can properly
   // focus the input before keyboard events (Enter/Escape) are dispatched.
   Promise.resolve().then(() => {
@@ -541,20 +570,20 @@ function applyEdit(taskId, col, newVal) {
       return ch ? { ...t, ...ch } : t;
     });
     setState({ ...state, tasks: newTasks });
+    // Persist to API
+    updateTask(taskId, { [col]: newVal, endDate: updated.endDate, durationDays: updated.durationDays }, state.currentUserId).catch(() => {});
     return; // setState → subscribe(render) handles re-render
   }
 
   const newTasks = state.tasks.map(t => t.id === taskId ? updated : t);
   setState({ ...state, tasks: newTasks });
 
-  // Immediately persist progressPercent to API
-  if (col === 'progressPercent') {
-    apiUpdateProgress(taskId, newVal, state.currentUserId).then(result => {
-      if (result?.task) {
-        mergeAPIData({ tasks: [result.task] });
-      }
-    }).catch(() => {});
-  }
+  // Persist all field changes to API
+  updateTask(taskId, { [col]: newVal }, state.currentUserId).then(result => {
+    if (result?.task) {
+      mergeAPIData({ tasks: [result.task] });
+    }
+  }).catch(() => {});
   // setState → subscribe(render) handles re-render; do NOT call renderWBSTable here
 }
 
@@ -596,20 +625,37 @@ function setupContextMenu() {
     _ctxMenu = document.createElement('div');
     _ctxMenu.id = 'ctx-menu';
     document.body.appendChild(_ctxMenu);
+
+    // Handle context menu item clicks
+    _ctxMenu.addEventListener('click', (e) => {
+      const item = e.target.closest('.ctx-item');
+      if (!item || item.classList.contains('text-muted')) return;
+      const action = item.dataset.action;
+      const ri = parseInt(item.dataset.ri);
+      const taskId = item.dataset.taskId;
+      if (action === 'insert-above') handleInsertRow(ri, 0);
+      else if (action === 'insert-below') handleInsertRow(ri, 1);
+      else if (action === 'delete' && taskId) handleDeleteRow(taskId);
+      _ctxMenu.classList.remove('visible');
+    });
+
     _ctxDocClickHandler = () => _ctxMenu.classList.remove('visible');
     document.addEventListener('click', _ctxDocClickHandler);
   }
 }
 
-function handleInsertRow(rowIndex, offset) {
+async function handleInsertRow(rowIndex, offset) {
   const state = getState();
   const schedule = state.schedules.find(s => s.id === _currentScheduleId);
   if (!schedule) return;
   _undoHistory = pushUndo(_undoHistory, JSON.parse(JSON.stringify(state.tasks)));
   const schedTasks = state.tasks.filter(t => t.scheduleId === schedule.id);
   const insertAt = rowIndex + offset;
+
+  // Optimistic UI: create local task first with temporary id
+  const tempId = 't_' + Date.now();
   const newTask = {
-    id: 't_' + Date.now(),
+    id: tempId,
     scheduleId: schedule.id,
     orderIndex: insertAt,
     name: '新任务',
@@ -622,22 +668,53 @@ function handleInsertRow(rowIndex, offset) {
     note: '',
   };
   const rest = schedTasks.map(t => t.orderIndex >= insertAt ? { ...t, orderIndex: t.orderIndex + 1 } : t);
-  const newTasks = [...state.tasks.filter(t => t.scheduleId !== schedule.id), ...rest, newTask];
-  setState({ ...state, tasks: newTasks });
+  const optimisticTasks = [...state.tasks.filter(t => t.scheduleId !== schedule.id), ...rest, newTask];
+  setState({ ...state, tasks: optimisticTasks });
+
+  // Persist to API
+  try {
+    const result = await insertRow(schedule.id, insertAt, state.currentUserId);
+    if (result?.task) {
+      // Replace optimistic task with server-assigned task
+      const finalTasks = state.tasks.map(t => t.id === tempId ? { ...t, ...result.task, id: result.task.id } : t);
+      setState({ ...state, tasks: finalTasks });
+    }
+  } catch (e) {
+    console.error('[wbsTable] insertRow failed:', e);
+    showToast('插入行失败', 'error');
+    // Revert optimistic update
+    setState({ ...state, tasks: state.tasks });
+  }
 }
 
-function handleDeleteRow(taskId) {
+async function handleDeleteRow(taskId) {
   const state = getState();
   const task = state.tasks.find(t => t.id === taskId);
   if (!task) return;
   const schedule = state.schedules.find(s => s.id === task.scheduleId);
-  const check = canDeleteRow(task, schedule);
+  const currentUserId = state.currentUserId;
+  const currentUser = state.users.find(u => u.id === currentUserId);
+  const role = currentUser?.role;
+  const check = canDeleteRow(task, schedule, role, currentUser);
   if (!check.ok) { showToast(check.message ?? '不可删除', 'error'); return; }
   _undoHistory = pushUndo(_undoHistory, JSON.parse(JSON.stringify(state.tasks)));
   const remaining = state.tasks.filter(t => t.scheduleId !== task.scheduleId);
-  const others = state.tasks.filter(t => t.id !== taskId && t.scheduleId === task.scheduleId);
-  const newTasks = [...remaining, ...others.map(t => t.orderIndex > task.orderIndex ? { ...t, orderIndex: t.orderIndex - 1 } : t)];
-  setState({ ...state, tasks: newTasks });
+  const others = state.tasks.filter(t => t.id !== taskId && t.scheduleId !== task.scheduleId);
+  const updatedOthers = state.tasks
+    .filter(t => t.id !== taskId && t.scheduleId === task.scheduleId)
+    .map(t => t.orderIndex > task.orderIndex ? { ...t, orderIndex: t.orderIndex - 1 } : t);
+  const optimisticTasks = [...remaining, ...updatedOthers];
+  setState({ ...state, tasks: optimisticTasks });
+
+  // Persist to API
+  try {
+    await deleteRow(taskId, state.currentUserId);
+  } catch (e) {
+    console.error('[wbsTable] deleteRow failed:', e);
+    showToast('删除行失败', 'error');
+    // Revert optimistic update
+    setState({ ...state, tasks: state.tasks });
+  }
 }
 
 // ─── Dependency picker ──────────────────────────────────────────────────────
@@ -646,9 +723,15 @@ let _depOverlay = null;
 
 export function showDependencyPicker(taskId) {
   const state = getState();
-  const schedTasks = state.tasks.filter(t => t.scheduleId === _currentScheduleId);
-  const currentTask = schedTasks.find(t => t.id === taskId);
-  if (!currentTask) return;
+  // Find the task first
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task) return;
+
+  // Get all tasks across ALL groups for dependency selection
+  // Group tasks by schedule to show which group each task belongs to
+  const allTasks = state.tasks.filter(t => t.id !== taskId);
+  const schedules = new Map(state.schedules.map(s => [s.id, s]));
+  const groups = new Map(state.groups.map(g => [g.id, g]));
 
   if (_depOverlay) _depOverlay.remove();
   _depOverlay = document.createElement('div');
@@ -659,13 +742,17 @@ export function showDependencyPicker(taskId) {
       <h3 style="margin-bottom:12px;font-size:14px">选择前置依赖任务</h3>
       <ul style="list-style:none;max-height:300px;overflow-y:auto">
         <li class="ctx-item" data-dep-task-id="" style="color:#6b7280">无依赖</li>
-        ${schedTasks.filter(t => t.id !== taskId).map(t => `
-          <li class="ctx-item ${t.dependencyTaskId === taskId ? 'text-danger' : ''}"
-              data-dep-task-id="${t.id}"
-              style="cursor:pointer;padding:6px 8px;border-bottom:1px solid #f3f4f6">
-            ${t.orderIndex + 1}. ${t.name}
-            ${t.dependencyTaskId ? `<span style="font-size:11px;color:#6b7280;margin-left:6px">← ${schedTasks.find(x=>x.id===t.dependencyTaskId)?.name ?? ''}</span>` : ''}
-          </li>`).join('')}
+        ${allTasks.map(t => {
+          const sched = schedules.get(t.scheduleId);
+          const group = sched ? groups.get(sched.groupId) : null;
+          const groupLabel = group ? `[${group.name}] ` : '';
+          return `
+            <li class="ctx-item ${t.dependencyTaskId === taskId ? 'text-danger' : ''}"
+                data-dep-task-id="${t.id}"
+                style="cursor:pointer;padding:6px 8px;border-bottom:1px solid #f3f4f6">
+              ${groupLabel}${t.orderIndex + 1}. ${t.name}
+            </li>`;
+        }).join('')}
       </ul>
       <div style="margin-top:12px;display:flex;justify-content:flex-end">
         <button id="dep-cancel" style="padding:6px 16px;cursor:pointer">取消</button>

@@ -19,7 +19,7 @@ export function permit(role, userId, schedule, user, action) {
   const isPM = role === 'PROJECT_MANAGER';
   const isOwnGroup = schedule.groupId === user.groupId;
 
-  // GL: 对本组可编辑/提交/撤回；对其他组只读
+  // GL: 对本组可编辑/提交/撤回/增删行；对其他组只读
   if (isGL) {
     if (action === 'read') return { ok: true };
     if (action === 'edit' || action === 'submit' || action === 'withdraw') {
@@ -29,18 +29,21 @@ export function permit(role, userId, schedule, user, action) {
       return { ok: false, code: 'ACTOR_NOT_PM' };
     }
     if (action === 'addRow') {
-      return { ok: false, code: 'MASTER_ONLY' };
+      // GL 只能新增本组的行
+      return isOwnGroup ? { ok: true } : { ok: false, code: 'NOT_OWN_GROUP' };
     }
     if (action === 'deleteRow') {
-      return { ok: false, code: 'MASTER_ONLY' };
+      // GL 只能删除本组的行（动态检查由 canDeleteRow 处理）
+      return isOwnGroup ? { ok: true } : { ok: false, code: 'NOT_OWN_GROUP' };
     }
   }
 
-  // PM: 对所有组只读任务，可审批/拒绝/重新排期；总表可增删 MASTER 行
+  // PM: 可审批/拒绝/重新排期；总表可增删 MASTER 行；可编辑所有组的任务
   if (isPM) {
     if (action === 'read') return { ok: true };
-    if (action === 'edit' || action === 'submit' || action === 'withdraw') {
-      return { ok: false, code: 'PM_CANNOT_EDIT_DIRECTLY' };
+    if (action === 'edit') return { ok: true }; // PM 可编辑所有组的任务
+    if (action === 'submit' || action === 'withdraw') {
+      return { ok: false, code: 'PM_CANNOT_SUBMIT' };
     }
     if (action === 'approve' || action === 'reject' || action === 'reschedule') {
       return { ok: true };
@@ -57,13 +60,25 @@ export function permit(role, userId, schedule, user, action) {
 
 /**
  * @param {object} task  - { source, schedule }
- * @param {object} schedule - { status }
+ * @param {object} schedule - { status, groupId }
+ * @param {Role} [role] - optional role for permission override
+ * @param {object} [user] - { groupId } optional user for GL own-group check
  * @returns {{ok: boolean, code?: string}}
  */
-export function canDeleteRow(task, schedule) {
+export function canDeleteRow(task, schedule, role, user) {
   if (!task) return { ok: false, code: 'UNKNOWN_SOURCE' };
+  // PM can delete any task
+  if (role === 'PROJECT_MANAGER') return { ok: true };
   if (task.source === 'MASTER') return { ok: true };
   if (task.source === 'GROUP') {
+    // GL can delete in PENDING/REJECTED status for their own group
+    if (role === 'GROUP_LEADER' && user) {
+      const isOwnGroup = schedule.groupId === user.groupId;
+      if (isOwnGroup && (schedule.status === 'PENDING' || schedule.status === 'REJECTED')) {
+        return { ok: true };
+      }
+      return { ok: false, code: 'SYNC_ROW_READONLY', message: '系统同步行不可删除' };
+    }
     if (schedule.status === 'PENDING' || schedule.status === 'REJECTED') return { ok: true };
     return { ok: false, code: 'SYNC_ROW_READONLY', message: '系统同步行不可删除' };
   }
@@ -85,17 +100,12 @@ export function canDeleteRow(task, schedule) {
  * - APPROVED status: GL cannot edit any task fields
  * - PENDING/REJECTED: GL can edit GROUP tasks in their own group
  * - PM in MASTER view: can edit MASTER tasks
- * - PM in GROUP view: read-only (use MASTER view to edit)
+ * - PM in GROUP view: can edit ALL GROUP tasks across all groups (自由编辑不限状态)
  */
 export function getFieldPermissions(task, schedule, role, user) {
   const isOwnGroup = schedule.groupId === user.groupId;
   const isPM = role === 'PROJECT_MANAGER';
   const isGL = role === 'GROUP_LEADER';
-
-  // PM in GROUP view (not MASTER view) — all fields read-only
-  if (isPM && task.source === 'GROUP') {
-    return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note', 'progressPercent']) };
-  }
 
   // MASTER tasks — PM can always edit
   if (task.source === 'MASTER' && isPM) {
@@ -105,8 +115,8 @@ export function getFieldPermissions(task, schedule, role, user) {
   // GROUP tasks
   if (task.source === 'GROUP') {
     if (isPM) {
-      // PM sees GROUP tasks as read-only in GROUP view
-      return { ok: true, readonlyFields: new Set(['name', 'ownerId', 'startDate', 'endDate', 'durationDays', 'dependencyTaskId', 'note', 'progressPercent']) };
+      // PM can edit all GROUP tasks across all groups
+      return { ok: true, readonlyFields: null };
     }
 
     if (isGL) {
